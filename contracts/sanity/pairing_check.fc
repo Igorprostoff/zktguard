@@ -1,0 +1,130 @@
+#include "../imports/stdlib.fc";
+
+;; ============================================================
+;; Pairing sanity check contract.
+;;
+;; Purpose: independently exercise the TVM BLS12-381 pairing
+;; precompile so the v0 Groth16 verifier inherits a known-good
+;; baseline. Accepts two G1 points (P1, P2) and two G2 points
+;; (Q1, Q2), checks whether e(P1, Q1) == e(P2, Q2) by reducing
+;; to e(P1, Q1) * e(-P2, Q2) == 1 and using the BLS_PAIRING
+;; opcode, and stores the boolean result.
+;;
+;; G1 encoding: 48 bytes, IETF BLS12-381 compressed.
+;; G2 encoding: 96 bytes, IETF BLS12-381 compressed.
+;; ============================================================
+
+;; ---------- Constants ----------
+
+const int op::check_pairing = 0x70a17001;
+
+const int err::malformed         = 901;
+const int err::not_on_curve_g1   = 902;
+const int err::not_on_curve_g2   = 903;
+const int err::unknown_op        = 0xffff;
+
+const int G1_BITS = 48 * 8;
+const int G2_BITS = 96 * 8;
+
+;; ---------- BLS asm bindings ----------
+;; The TVM BLS12-381 opcode group is part of the Feb-2024 upgrade.
+;; Confirm the opcode set against the current testnet release before
+;; deploy — bible point 52.
+
+slice bls_g1_neg(slice x)       asm "BLS_G1_NEG";
+int   bls_g1_in_group(slice x)  asm "BLS_G1_INGROUP";
+int   bls_g2_in_group(slice x)  asm "BLS_G2_INGROUP";
+
+;; Fixed-arity wrapper: pushes literal n=2 then invokes BLS_PAIRING.
+;; Stack after args pushed: p1 q1 p2 q2; the asm prefix pushes 2; the
+;; opcode then pops n and 2n slices.
+int bls_pairing_2(slice p1, slice q1, slice p2, slice q2) asm "2 PUSHINT BLS_PAIRING";
+
+;; ---------- Storage ----------
+;; Layout: result (1 bit) | last_query_id (64 bits)
+
+(int, int) load_data() inline {
+    var ds = get_data().begin_parse();
+    if (ds.slice_bits() == 0) {
+        return (0, 0);
+    }
+    int result = ds~load_uint(1);
+    int last_query = ds~load_uint(64);
+    return (result, last_query);
+}
+
+() save_data(int result, int last_query) impure inline {
+    set_data(begin_cell()
+        .store_uint(result, 1)
+        .store_uint(last_query, 64)
+        .end_cell());
+}
+
+;; ---------- Helpers ----------
+
+slice load_point(cell c, int expected_bits) inline {
+    slice s = c.begin_parse();
+    throw_unless(err::malformed, s.slice_bits() == expected_bits);
+    throw_unless(err::malformed, s.slice_refs() == 0);
+    return s;
+}
+
+;; ---------- Entry point ----------
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) {
+        ;; ignore bounced messages
+        return ();
+    }
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    if (op == op::check_pairing) {
+        cell c_p1 = in_msg_body~load_ref();
+        cell c_q1 = in_msg_body~load_ref();
+        cell c_p2 = in_msg_body~load_ref();
+        cell c_q2 = in_msg_body~load_ref();
+
+        slice p1 = load_point(c_p1, G1_BITS);
+        slice q1 = load_point(c_q1, G2_BITS);
+        slice p2 = load_point(c_p2, G1_BITS);
+        slice q2 = load_point(c_q2, G2_BITS);
+
+        throw_unless(err::not_on_curve_g1, bls_g1_in_group(p1));
+        throw_unless(err::not_on_curve_g1, bls_g1_in_group(p2));
+        throw_unless(err::not_on_curve_g2, bls_g2_in_group(q1));
+        throw_unless(err::not_on_curve_g2, bls_g2_in_group(q2));
+
+        slice neg_p2 = bls_g1_neg(p2);
+
+        ;; Equality e(P1, Q1) == e(P2, Q2) becomes
+        ;; e(P1, Q1) * e(-P2, Q2) == 1, a single BLS_PAIRING call.
+        ;; BLS_PAIRING follows TVM's boolean convention (-1 = true,
+        ;; 0 = false). Normalise to {0,1} before storing into a uint1.
+        int eq = bls_pairing_2(p1, q1, neg_p2, q2);
+        int bit = 0;
+        if (eq != 0) { bit = 1; }
+        save_data(bit, query_id);
+        return ();
+    }
+
+    throw(err::unknown_op);
+}
+
+;; ---------- Get methods ----------
+
+int get_last_result() method_id {
+    var (result, _) = load_data();
+    return result;
+}
+
+int get_last_query_id() method_id {
+    var (_, q) = load_data();
+    return q;
+}
