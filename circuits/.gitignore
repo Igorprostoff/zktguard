@@ -1,0 +1,11 @@
+node_modules/
+dist/
+build/
+*.r1cs
+*.sym
+*.wasm
+*.wtns
+*.zkey
+*.ptau
+*_js/
+verification_key.json
