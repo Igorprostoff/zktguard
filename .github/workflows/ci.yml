@@ -1,0 +1,89 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  node:
+    name: Node / pnpm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+      - name: Install
+        run: pnpm install --frozen-lockfile || pnpm install
+      - name: Lint
+        run: pnpm lint
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
+
+  rust:
+    name: Rust (prover)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for Rust workspace
+        id: check
+        run: |
+          if [ -f prover/Cargo.toml ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: dtolnay/rust-toolchain@stable
+        if: steps.check.outputs.exists == 'true'
+        with:
+          components: rustfmt, clippy
+      - name: fmt
+        if: steps.check.outputs.exists == 'true'
+        working-directory: prover
+        run: cargo fmt --check
+      - name: clippy
+        if: steps.check.outputs.exists == 'true'
+        working-directory: prover
+        run: cargo clippy --all-targets -- -D warnings
+      - name: test
+        if: steps.check.outputs.exists == 'true'
+        working-directory: prover
+        run: cargo test --all
+
+  go:
+    name: Go (attestor)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for Go module
+        id: check
+        run: |
+          if [ -f attestor/go.mod ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+      - uses: actions/setup-go@v5
+        if: steps.check.outputs.exists == 'true'
+        with:
+          go-version: "1.22"
+      - name: fmt
+        if: steps.check.outputs.exists == 'true'
+        working-directory: attestor
+        run: test -z "$(gofmt -l .)"
+      - name: vet
+        if: steps.check.outputs.exists == 'true'
+        working-directory: attestor
+        run: go vet ./...
+      - name: test
+        if: steps.check.outputs.exists == 'true'
+        working-directory: attestor
+        run: go test ./...

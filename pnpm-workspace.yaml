@@ -1,0 +1,7 @@
+packages:
+  - "circuits"
+  - "contracts"
+  - "sdk"
+  - "miniapp"
+  - "docs"
+  - "examples/*"
