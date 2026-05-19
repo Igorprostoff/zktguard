@@ -15,17 +15,19 @@ include "templates/public_binding.circom";
  * created at or before now - threshold_months × 30d, without revealing
  * the account or the transcript."
  *
- * Public signals (8):
- *   nonce, app_id, expiration, claim_type, threshold_months,
- *   attestor_pubkey_x, attestor_pubkey_y, transcript_hash
- *
- * Public output (1):
- *   nullifier
+ * Public inputs (8, matching DoD Task 2):
+ *   nonce, app_id, expiration, claim_type, nullifier,
+ *   attestor_pubkey_x, attestor_pubkey_y, threshold_months
  *
  * Private witnesses:
  *   ciphertext[N], plaintext[N], aes_key[16], iv[12],
+ *   transcript_hash (private — committed via TranscriptCommitment),
  *   sig_R8x, sig_R8y, sig_s, user_secret,
  *   creation_timestamp, current_time, timestamp_offset
+ *
+ * Note on transcript_hash: kept private. The attestor signature is
+ * verified in-circuit (EdDSA over BabyJubjub), so the verifier contract
+ * does not need transcript_hash exposed.
  *
  * Constraint groups (six, see templates/):
  *   1. AEADDecrypt              — decrypt(ciphertext, key, iv) == plaintext   [STUB]
@@ -39,21 +41,23 @@ include "templates/public_binding.circom";
  */
 
 template AccountAge(N) {
-    /* ---------------- public inputs ---------------- */
+    /* ---------------- public inputs (8) ---------------- */
     signal input nonce;
     signal input app_id;
     signal input expiration;
     signal input claim_type;
-    signal input threshold_months;
+    signal input nullifier;
     signal input attestor_pubkey_x;
     signal input attestor_pubkey_y;
-    signal input transcript_hash;
+    signal input threshold_months;
 
     /* ---------------- private inputs ---------------- */
     signal input ciphertext[N];
     signal input plaintext[N];
     signal input aes_key[16];
     signal input iv[12];
+
+    signal input transcript_hash;
 
     signal input sig_R8x;
     signal input sig_R8y;
@@ -63,9 +67,6 @@ template AccountAge(N) {
     signal input creation_timestamp;
     signal input current_time;
     signal input timestamp_offset;
-
-    /* ---------------- public output ---------------- */
-    signal output nullifier;
 
     /* (1) AEAD decryption — stub for v0.1 */
     component dec = AEADDecrypt(N);
@@ -111,12 +112,12 @@ template AccountAge(N) {
     ae.sig_s    <== sig_s;
     ae.message  <== transcript_hash;
 
-    /* (6) Nullifier */
+    /* (6) Nullifier — bind public input to Poseidon hash */
     component nf = NullifierPoseidon();
     nf.user_secret <== user_secret;
     nf.app_id      <== app_id;
     nf.claim_type  <== claim_type;
-    nullifier <== nf.out;
+    nullifier === nf.out;
 
     /* anchor public inputs */
     component bind = PublicBinding();
@@ -128,6 +129,6 @@ template AccountAge(N) {
 }
 
 component main { public [
-    nonce, app_id, expiration, claim_type, threshold_months,
-    attestor_pubkey_x, attestor_pubkey_y, transcript_hash
+    nonce, app_id, expiration, claim_type, nullifier,
+    attestor_pubkey_x, attestor_pubkey_y, threshold_months
 ] } = AccountAge(128);

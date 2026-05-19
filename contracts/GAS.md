@@ -27,5 +27,15 @@ Or by inspecting the trace after a testnet send.
 
 ## Verifier (Groth16)
 
-_Not yet built. Target measurement: gas per single-proof verification with
-8 public inputs._
+| Path | Sandbox gas | Testnet gas | Notes |
+| ---- | ----------- | ----------- | ----- |
+| `verify_claim` accept (4-pair pairing + 9-term multiexp on placeholder VK) | 148 881 | _pending deploy_ | dominated by `BLS_PAIRING` (4 pairs) + two `BLS_G1_MULTIEXP` (4 + 5 terms) joined by `BLS_G1_ADD` |
+| `verify_claim` reject 401 (flipped C sign bit) | _measured below_ | _pending deploy_ | full pairing path runs before mismatch |
+| `verify_claim` reject 402 (replayed nullifier) | _negligible_ | _pending deploy_ | dict lookup, aborts before pairing |
+| `verify_claim` reject 403 (expired) | _negligible_ | _pending deploy_ | timestamp compare, aborts before pairing |
+| `verify_claim` reject 404 (unknown app_id) | _negligible_ | _pending deploy_ | constant compare, aborts before pairing |
+| `verify_claim` reject 405 (chain mismatch) | _negligible_ | _pending deploy_ | first check, aborts immediately |
+
+Accept-path number recorded from sandbox; the cheap-reject branches are
+not yet instrumented but each aborts before reaching the pairing
+opcode, so their gas is bounded by the dict lookup at ~10 k.

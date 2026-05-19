@@ -8,7 +8,8 @@
     "lint": "tsc --noEmit",
     "build": "blueprint build --all",
     "test": "jest --runInBand",
-    "deploy:pairing": "blueprint run deployPairingCheck"
+    "deploy:pairing": "blueprint run deployPairingCheck",
+    "deploy:verifier": "blueprint run deployGroth16Verifier"
   },
   "devDependencies": {
     "@noble/curves": "^1.4.0",

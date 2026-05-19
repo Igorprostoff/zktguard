@@ -1,0 +1,366 @@
+#include "../imports/stdlib.fc";
+
+;; ===========================================================
+;; Groth16 verifier on TON for zkTGuard v0.1.
+;;
+;; PLACEHOLDER VK — the constants embedded below correspond to a
+;; toy trusted setup with all scalars set to small fixed values
+;; (alpha = beta = gamma = delta = 1; IC scalars 7, 101..108).
+;; This makes it trivial to craft proofs in TS for end-to-end
+;; sandbox tests *without* having a real circuit/proving-key pair
+;; built yet. DO NOT DEPLOY TO MAINNET. The real VK lands when
+;; Task 3 (trusted setup) ships and Task 4 is regenerated.
+;;
+;; Public-input vector (8 scalars), in the same order as the
+;; account_age circuit's `public []` declaration:
+;;
+;;     pi[0]  = nonce          (high 32 bits carry chain_id —
+;;                              see chain_id_from_nonce below)
+;;     pi[1]  = app_id
+;;     pi[2]  = expiration     (Unix seconds)
+;;     pi[3]  = claim_type
+;;     pi[4]  = nullifier
+;;     pi[5]  = attestor_pubkey_x
+;;     pi[6]  = attestor_pubkey_y
+;;     pi[7]  = threshold_months
+;; ===========================================================
+
+;; ---------- Op codes ----------
+
+const int op::verify_claim = 0x76657266;   ;; "verf"
+
+;; ---------- Error codes (see ERRORS.md) ----------
+
+const int err::invalid_proof       = 401;
+const int err::nullifier_used      = 402;
+const int err::expired             = 403;
+const int err::unknown_app         = 404;
+const int err::chain_mismatch      = 405;
+const int err::malformed_input     = 411;
+const int err::not_on_curve_g1     = 412;
+const int err::not_on_curve_g2     = 413;
+const int err::unknown_op          = 0xffff;
+
+;; ---------- Constants ----------
+;; Chain identifier baked into the high 32 bits of the public
+;; nonce by the prover. v0 uses 1 for testnet sandbox tests.
+
+const int CHAIN_ID         = 1;
+const int ACCEPTED_APP_ID  = 1;     ;; v0 stub for registry lookup
+const int ACCEPTED_CLAIM   = 1;
+
+const int G1_BITS = 48 * 8;
+const int G2_BITS = 96 * 8;
+const int SCALAR_BITS = 256;
+const int CHAIN_ID_BITS = 32;
+const int NONCE_RANDOM_BITS = SCALAR_BITS - CHAIN_ID_BITS;
+
+;; ---------- BLS asm bindings ----------
+
+slice bls_g1_neg(slice x)         asm "BLS_G1_NEG";
+int   bls_g1_in_group(slice x)    asm "BLS_G1_INGROUP";
+int   bls_g2_in_group(slice x)    asm "BLS_G2_INGROUP";
+
+;; Four-pair pairing: e(g1a,g2a) * e(g1b,g2b) * e(g1c,g2c) * e(g1d,g2d) == 1?
+int bls_pairing_4(
+    slice g1a, slice g2a,
+    slice g1b, slice g2b,
+    slice g1c, slice g2c,
+    slice g1d, slice g2d
+) asm "4 PUSHINT BLS_PAIRING";
+
+;; FunC's asm directive caps argument count at 16, so the 9-term
+;; multiexp needed for vk_x is split into a 4-term and a 5-term
+;; call combined by BLS_G1_ADD.
+
+slice bls_g1_add(slice x, slice y) asm "BLS_G1_ADD";
+
+slice bls_g1_multiexp_4(
+    slice p0, int s0, slice p1, int s1,
+    slice p2, int s2, slice p3, int s3
+) asm "4 PUSHINT BLS_G1_MULTIEXP";
+
+slice bls_g1_multiexp_5(
+    slice p0, int s0, slice p1, int s1, slice p2, int s2,
+    slice p3, int s3, slice p4, int s4
+) asm "5 PUSHINT BLS_G1_MULTIEXP";
+
+;; ===========================================================
+;; Verification key constants (PLACEHOLDER — see header).
+;; ===========================================================
+
+slice vk_alpha_g1() inline {
+    return begin_cell()
+        .store_uint(0x97F1D3A73197D7942695638C4FA9AC0FC3688C4F9774B905, 192)
+        .store_uint(0xA14E3A3F171BAC586C55E83FF97A1AEFFB3AF00ADB22C6BB, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_beta_g2() inline {
+    return begin_cell()
+        .store_uint(0x93E02B6052719F607DACD3A088274F65596BD0D09920B61A, 192)
+        .store_uint(0xB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E, 192)
+        .store_uint(0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02, 192)
+        .store_uint(0xB4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_gamma_g2() inline {
+    return begin_cell()
+        .store_uint(0x93E02B6052719F607DACD3A088274F65596BD0D09920B61A, 192)
+        .store_uint(0xB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E, 192)
+        .store_uint(0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02, 192)
+        .store_uint(0xB4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_delta_g2() inline {
+    return begin_cell()
+        .store_uint(0x93E02B6052719F607DACD3A088274F65596BD0D09920B61A, 192)
+        .store_uint(0xB5DA61BBDC7F5049334CF11213945D57E5AC7D055D042B7E, 192)
+        .store_uint(0x024AA2B2F08F0A91260805272DC51051C6E47AD4FA403B02, 192)
+        .store_uint(0xB4510B647AE3D1770BAC0326A805BBEFD48056C8C121BDB8, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_0() inline {
+    return begin_cell()
+        .store_uint(0xB928F3BEB93519EECF0145DA903B40A4C97DCA00B21F12AC, 192)
+        .store_uint(0x0DF3BE9116EF2EF27B2AE6BCD4C5BC2D54EF5A70627EFCB7, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_1() inline {
+    return begin_cell()
+        .store_uint(0xA7B9A71C54B44F6738A77F457AF08DC79F09826193197A53, 192)
+        .store_uint(0xC1C880F15963C716CEC9FF0FD0BCB8AB41BC2FE89C2711FA, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_2() inline {
+    return begin_cell()
+        .store_uint(0xB8F1A9EDF68006F913B5377A0F37BED80EFADC4D6BF9F152, 192)
+        .store_uint(0x3E83B2311E14219C6AA0B8AAEE79E47A9977E880BAD37A8E, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_3() inline {
+    return begin_cell()
+        .store_uint(0x899729F080571E25FEE93538EB21304A10600D5CEB980795, 192)
+        .store_uint(0x9D78C3967D9BA32B570D4F4105626E5972CCF2E24B723604, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_4() inline {
+    return begin_cell()
+        .store_uint(0xAB23C89F138F4252FC3922E24B7254743AF1259FA1AEAE90, 192)
+        .store_uint(0xE98315C664C50800CECFC72A4D45EE772F73C4BB22B8646F, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_5() inline {
+    return begin_cell()
+        .store_uint(0xB8357A39C42F80953E8BC9908CB6B79C1A5C50ED3BBC0E33, 192)
+        .store_uint(0x0577A215AC850E601909FA5B53BED90C744E0355863EAA6E, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_6() inline {
+    return begin_cell()
+        .store_uint(0xA1DBD288AE846EDBFBA77F7342FAF45BDC0C5D5CE8483877, 192)
+        .store_uint(0xACCE6D00E09EF49D30FB40D4764D6637658D5AC738E0E197, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_7() inline {
+    return begin_cell()
+        .store_uint(0x9417AF4462CC8D542F6F6C479866F1C9FA4768069EF145F9, 192)
+        .store_uint(0xACDD50221B8956B891CEEC3EF4EC77C54006B00E38156CEE, 192)
+        .end_cell().begin_parse();
+}
+
+slice vk_ic_8() inline {
+    return begin_cell()
+        .store_uint(0x92E5CD122E484C8480C430738091F23F30773477D9850C30, 192)
+        .store_uint(0x26824F1F58C75CF20365D950607E159717864C0760432EDB, 192)
+        .end_cell().begin_parse();
+}
+
+;; ===========================================================
+;; Storage:
+;;
+;;     nullifiers_dict : HashmapE(256 → cell)  — used nullifiers
+;;
+;; The dict value cells are empty; only presence matters.
+;; ===========================================================
+
+(cell) load_dict_storage() inline {
+    slice ds = get_data().begin_parse();
+    if (ds.slice_empty?()) {
+        return new_dict();
+    }
+    return ds~load_dict();
+}
+
+() save_dict_storage(cell d) impure inline {
+    set_data(begin_cell().store_dict(d).end_cell());
+}
+
+;; ---------- Helpers ----------
+
+slice load_point_slice(cell c, int expected_bits) inline {
+    slice s = c.begin_parse();
+    throw_unless(err::malformed_input, s.slice_bits() == expected_bits);
+    throw_unless(err::malformed_input, s.slice_refs() == 0);
+    return s;
+}
+
+int chain_id_from_nonce(int nonce) inline {
+    ;; High 32 bits of the 256-bit nonce carry the chain_id.
+    return nonce >> NONCE_RANDOM_BITS;
+}
+
+;; Reads exactly 8 × 256-bit public inputs from a head cell using
+;; the snake layout (3 + 3 + 2). Returns them as a tuple of ints
+;; in declaration order.
+(int, int, int, int, int, int, int, int) parse_public_inputs(cell head) inline {
+    slice s0 = head.begin_parse();
+    int pi0 = s0~load_uint(SCALAR_BITS);
+    int pi1 = s0~load_uint(SCALAR_BITS);
+    int pi2 = s0~load_uint(SCALAR_BITS);
+
+    cell c1 = s0~load_ref();
+    slice s1 = c1.begin_parse();
+    int pi3 = s1~load_uint(SCALAR_BITS);
+    int pi4 = s1~load_uint(SCALAR_BITS);
+    int pi5 = s1~load_uint(SCALAR_BITS);
+
+    cell c2 = s1~load_ref();
+    slice s2 = c2.begin_parse();
+    int pi6 = s2~load_uint(SCALAR_BITS);
+    int pi7 = s2~load_uint(SCALAR_BITS);
+
+    return (pi0, pi1, pi2, pi3, pi4, pi5, pi6, pi7);
+}
+
+;; Performs the four-pair Groth16 check:
+;;   e(A, B) * e(-α, β) * e(-vk_x, γ) * e(-C, δ) == 1
+;; Returns 1 (verified) or 0 (rejected). Normalised from TVM's
+;; -1/0 boolean convention.
+int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
+    slice neg_alpha = bls_g1_neg(vk_alpha_g1());
+    slice neg_vk_x  = bls_g1_neg(vk_x);
+    slice neg_c     = bls_g1_neg(c);
+    int eq = bls_pairing_4(
+        a,         b,
+        neg_alpha, vk_beta_g2(),
+        neg_vk_x,  vk_gamma_g2(),
+        neg_c,     vk_delta_g2()
+    );
+    if (eq != 0) { return 1; }
+    return 0;
+}
+
+;; ===========================================================
+;; Entry point
+;; ===========================================================
+
+() recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
+    if (in_msg_body.slice_empty?()) {
+        return ();
+    }
+    slice cs = in_msg_full.begin_parse();
+    int flags = cs~load_uint(4);
+    if (flags & 1) { return (); }  ;; ignore bounced
+
+    int op = in_msg_body~load_uint(32);
+    int query_id = in_msg_body~load_uint(64);
+
+    if (op == op::verify_claim) {
+        cell c_a  = in_msg_body~load_ref();
+        cell c_b  = in_msg_body~load_ref();
+        cell c_c  = in_msg_body~load_ref();
+        cell c_pi = in_msg_body~load_ref();
+
+        slice a = load_point_slice(c_a, G1_BITS);
+        slice b = load_point_slice(c_b, G2_BITS);
+        slice c = load_point_slice(c_c, G1_BITS);
+
+        throw_unless(err::not_on_curve_g1, bls_g1_in_group(a));
+        throw_unless(err::not_on_curve_g2, bls_g2_in_group(b));
+        throw_unless(err::not_on_curve_g1, bls_g1_in_group(c));
+
+        var (pi0, pi1, pi2, pi3, pi4, pi5, pi6, pi7) = parse_public_inputs(c_pi);
+        ;; pi0=nonce, pi1=app_id, pi2=expiration, pi3=claim_type,
+        ;; pi4=nullifier, pi5..7=attestor pubkey x,y / threshold
+
+        ;; (1) Chain ID — extract from nonce high bits.
+        int chain_id = chain_id_from_nonce(pi0);
+        throw_unless(err::chain_mismatch, chain_id == CHAIN_ID);
+
+        ;; (2) Expiry.
+        throw_if(err::expired, now() > pi2);
+
+        ;; (3) Registry stub: hard-coded acceptance pair for v0.
+        throw_unless(err::unknown_app,
+            (pi1 == ACCEPTED_APP_ID) & (pi3 == ACCEPTED_CLAIM));
+
+        ;; (4) Nullifier replay protection — pre-check.
+        cell nullifiers = load_dict_storage();
+        var (_, found) = nullifiers.udict_get?(SCALAR_BITS, pi4);
+        throw_if(err::nullifier_used, found);
+
+        ;; (5) Compute vk_x = IC[0] + Σ pi_i · IC[i+1]. Two multiexps
+        ;; (4 + 5 terms) joined with BLS_G1_ADD, since FunC asm
+        ;; functions are capped at 16 arguments.
+        slice part_a = bls_g1_multiexp_4(
+            vk_ic_0(), 1,
+            vk_ic_1(), pi0,
+            vk_ic_2(), pi1,
+            vk_ic_3(), pi2
+        );
+        slice part_b = bls_g1_multiexp_5(
+            vk_ic_4(), pi3,
+            vk_ic_5(), pi4,
+            vk_ic_6(), pi5,
+            vk_ic_7(), pi6,
+            vk_ic_8(), pi7
+        );
+        slice vk_x = bls_g1_add(part_a, part_b);
+
+        ;; (6) Groth16 pairing equation.
+        int ok = verify_groth16(a, b, c, vk_x);
+        throw_unless(err::invalid_proof, ok);
+
+        ;; (7) Insert nullifier and persist.
+        nullifiers~udict_set_builder(SCALAR_BITS, pi4, begin_cell());
+        save_dict_storage(nullifiers);
+
+        return ();
+    }
+
+    throw(err::unknown_op);
+}
+
+;; ===========================================================
+;; Get methods
+;; ===========================================================
+
+int nullifier_used?(int nf) method_id {
+    cell d = load_dict_storage();
+    var (_, found) = d.udict_get?(SCALAR_BITS, nf);
+    if (found) { return 1; }
+    return 0;
+}
+
+int chain_id() method_id {
+    return CHAIN_ID;
+}
+
+int accepted_app_id() method_id {
+    return ACCEPTED_APP_ID;
+}
+
+int accepted_claim_type() method_id {
+    return ACCEPTED_CLAIM;
+}
