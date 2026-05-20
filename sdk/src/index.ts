@@ -11,11 +11,31 @@
  * verifier (Task 4). When Task 3's trusted setup lands, only the
  * prover's internals change — the SDK contract stays put.
  */
-import { Address, beginCell, Cell, OpenedContract, TonClient } from "@ton/ton";
+import { Address, beginCell, Cell, TonClient } from "@ton/ton";
 import { bls12_381 } from "@noble/curves/bls12-381";
-import { Buffer } from "node:buffer";
 
 export { Address } from "@ton/ton";
+
+/** Browser-safe hex encoding without Node's Buffer. */
+function bytesToHexUpper(bytes: Uint8Array): string {
+  let out = "";
+  for (const b of bytes) {
+    out += b.toString(16).padStart(2, "0");
+  }
+  return out.toUpperCase();
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
+  if (clean.length % 2 !== 0) {
+    throw new Error(`hex has odd length: ${clean.length}`);
+  }
+  const out = new Uint8Array(clean.length / 2);
+  for (let i = 0; i < clean.length; i += 2) {
+    out[i / 2] = parseInt(clean.slice(i, i + 2), 16);
+  }
+  return out;
+}
 
 // ---------------------------------------------------------------------
 // Types
@@ -345,9 +365,9 @@ export function craftSyntheticProof(
   const B = G2.multiply(b);
   const C = G1.multiply(c);
   return {
-    aHex: Buffer.from(A.toRawBytes(true)).toString("hex").toUpperCase(),
-    bHex: Buffer.from(B.toRawBytes(true)).toString("hex").toUpperCase(),
-    cHex: Buffer.from(C.toRawBytes(true)).toString("hex").toUpperCase(),
+    aHex: bytesToHexUpper(A.toRawBytes(true)),
+    bHex: bytesToHexUpper(B.toRawBytes(true)),
+    cHex: bytesToHexUpper(C.toRawBytes(true)),
     cScalar: c,
   };
 }
@@ -368,9 +388,9 @@ export function buildVerifierMessageBody(opts: {
   if (opts.publicInputs.length !== 8) {
     throw new Error(`expected 8 public inputs, got ${opts.publicInputs.length}`);
   }
-  const aBytes = Buffer.from(opts.proof.aHex, "hex");
-  const bBytes = Buffer.from(opts.proof.bHex, "hex");
-  const cBytes = Buffer.from(opts.proof.cHex, "hex");
+  const aBytes = hexToBytes(opts.proof.aHex);
+  const bBytes = hexToBytes(opts.proof.bHex);
+  const cBytes = hexToBytes(opts.proof.cHex);
   if (aBytes.length !== 48 || cBytes.length !== 48 || bBytes.length !== 96) {
     throw new Error("proof bytes must be 48/96/48 (compressed BLS12-381)");
   }
@@ -395,11 +415,19 @@ export function buildVerifierMessageBody(opts: {
   return beginCell()
     .storeUint(OP_VERIFY_CLAIM, 32)
     .storeUint(opts.queryId, 64)
-    .storeRef(beginCell().storeBuffer(aBytes).endCell())
-    .storeRef(beginCell().storeBuffer(bBytes).endCell())
-    .storeRef(beginCell().storeBuffer(cBytes).endCell())
+    .storeRef(buildPointCell(aBytes))
+    .storeRef(buildPointCell(bBytes))
+    .storeRef(buildPointCell(cBytes))
     .storeRef(piHead)
     .endCell();
+}
+
+function buildPointCell(bytes: Uint8Array): Cell {
+  let b = beginCell();
+  for (const byte of bytes) {
+    b = b.storeUint(byte, 8);
+  }
+  return b.endCell();
 }
 
 /** Re-export of the op code so callers don't hard-code magic numbers. */
