@@ -31,6 +31,12 @@ start at 401 for the verifier and 901 for sanity / utility contracts.
 | ---- | ----------------- | ------- |
 | 411  | not_verifier      | `op::mint` received from an address other than `verifier_addr` |
 
+## App registry (Task 6)
+
+| Code | Name              | Meaning |
+| ---- | ----------------- | ------- |
+| 420  | not_admin         | Mutation op (`op::register`, `op::deregister`, `op::transfer_admin`) received from non-admin |
+
 ## Sanity / utility contracts
 
 ### PairingCheck (Task 1)
