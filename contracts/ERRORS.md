@@ -17,11 +17,19 @@ start at 401 for the verifier and 901 for sanity / utility contracts.
 | 412  | not_on_curve_g1   | Provided G1 element fails BLS12-381 subgroup check |
 | 413  | not_on_curve_g2   | Provided G2 element fails BLS12-381 subgroup check |
 
-## Soulbound credential (Task 5 — not yet built)
+## Soulbound credential (Task 5)
+
+### Item
 
 | Code | Name              | Meaning |
 | ---- | ----------------- | ------- |
-| 410  | transfer_forbidden | Transfer attempt against a non-transferable NFT |
+| 410  | transfer_forbidden | `op::transfer`, `op::ownership_assigned`, or `op::burn` received |
+
+### Collection
+
+| Code | Name              | Meaning |
+| ---- | ----------------- | ------- |
+| 411  | not_verifier      | `op::mint` received from an address other than `verifier_addr` |
 
 ## Sanity / utility contracts
 

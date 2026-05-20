@@ -9,7 +9,8 @@
     "build": "blueprint build --all",
     "test": "jest --runInBand",
     "deploy:pairing": "blueprint run deployPairingCheck",
-    "deploy:verifier": "blueprint run deployGroth16Verifier"
+    "deploy:verifier": "blueprint run deployGroth16Verifier",
+    "deploy:credential": "blueprint run deploySoulboundCollection"
   },
   "devDependencies": {
     "@noble/curves": "^1.4.0",
