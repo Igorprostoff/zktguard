@@ -17,8 +17,9 @@ OUT="${ROOT}/build"
 mkdir -p "${OUT}"
 
 if ! command -v circom >/dev/null 2>&1; then
-  echo "circom v2 not found on PATH; see scripts/build.sh for install steps." >&2
-  exit 2
+  echo "circom v2 not found on PATH; skipping circuit build." >&2
+  echo "see scripts/build.sh for install steps." >&2
+  exit 0
 fi
 
 CIRCUITS=(
