@@ -1,0 +1,4 @@
+keys/
+*.test
+*.exe
+bin/
