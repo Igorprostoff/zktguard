@@ -56,6 +56,14 @@ Every component is intended to be reproducible from source. See `REPRODUCE.md` (
 
 A draft writeup will be posted to IACR ePrint or arXiv. Link will appear here once published.
 
+## Documentation
+
+Docusaurus site source lives at [`docs/`](./docs). Build locally with `pnpm --filter @zktguard/docs build`. GitHub Pages deployment is gated on the first testnet deploy; URL will appear here once published.
+
+## Releases
+
+See [`CHANGELOG.md`](./CHANGELOG.md). The v0.1 tag bundles every DoD artefact (FunC contracts, SDK bundle, paper PDF, verification key, reproducibility checksums).
+
 ## License
 
 MIT. See `LICENSE`.

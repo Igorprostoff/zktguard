@@ -1,0 +1,66 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Build artefacts + draft release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install workspace
+        run: pnpm install --frozen-lockfile
+
+      - name: Build contracts
+        working-directory: contracts
+        run: pnpm build
+
+      - name: Build SDK bundle
+        working-directory: sdk
+        run: pnpm build
+
+      - name: Build docs
+        working-directory: docs
+        run: pnpm build
+
+      - name: Set up TeX Live (for paper PDF)
+        uses: teatimeguest/setup-texlive-action@v3
+        with:
+          packages: scheme-basic latex-bin hyperref geometry microtype enumitem listings xcolor amsmath amsfonts
+
+      - name: Build paper PDF
+        working-directory: paper
+        run: make
+
+      - name: Collect release artefacts
+        run: |
+          mkdir -p release
+          cp paper/zktguard.pdf release/ || true
+          cp circuits/account_age/verification_key.json release/verification_key.json
+          cp contracts/build/*.compiled.json release/ || true
+          cp REPRODUCE.md release/
+          (cd sdk && tar -czf ../release/sdk-dist.tar.gz dist/)
+          (cd docs && tar -czf ../release/docs-build.tar.gz build/)
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          body_path: CHANGELOG.md
+          files: |
+            release/*
+          fail_on_unmatched_files: false
+          draft: true
