@@ -38,13 +38,11 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             texlive-latex-base texlive-latex-recommended \
             texlive-latex-extra texlive-fonts-recommended \
-            texlive-fonts-extra lmodern
-        continue-on-error: true
+            texlive-fonts-extra texlive-science lmodern
 
       - name: Build paper PDF
         working-directory: paper
         run: make
-        continue-on-error: true
 
       - name: Collect release artefacts
         run: |
