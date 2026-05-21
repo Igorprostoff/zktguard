@@ -1,0 +1,20 @@
+{
+  "name": "@zktguard/example-shared",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "exampleApp.tsx",
+  "exports": {
+    ".": "./exampleApp.tsx",
+    "./style.css": "./style.css"
+  },
+  "dependencies": {
+    "@tonconnect/ui-react": "^2.0.9",
+    "@zktguard/sdk": "workspace:*",
+    "react": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.3",
+    "typescript": "^5.4.5"
+  }
+}
