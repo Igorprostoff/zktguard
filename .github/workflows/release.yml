@@ -39,10 +39,12 @@ jobs:
             texlive-latex-base texlive-latex-recommended \
             texlive-latex-extra texlive-fonts-recommended \
             texlive-fonts-extra texlive-science lmodern
+        continue-on-error: true
 
       - name: Build paper PDF
         working-directory: paper
         run: make
+        continue-on-error: true
 
       - name: Collect release artefacts
         run: |
@@ -51,7 +53,13 @@ jobs:
           cp contracts/build/*.compiled.json release/ || true
           cp REPRODUCE.md release/
           cp CHANGELOG.md release/
-          cp paper/zktguard.pdf release/ || echo "paper PDF not built (TeX install may have failed)"
+          # Paper: ship PDF if the TeX build succeeded; otherwise ship .tex source.
+          if [ -f paper/zktguard.pdf ]; then
+            cp paper/zktguard.pdf release/
+          else
+            cp paper/zktguard.tex release/zktguard.tex
+            echo "PDF build skipped on CI; LaTeX source attached instead." > release/PAPER_NOTE.md
+          fi
           (cd sdk && tar -czf ../release/sdk-dist.tar.gz dist/)
           (cd docs && tar -czf ../release/docs-build.tar.gz build/)
 
