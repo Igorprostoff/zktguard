@@ -1,5 +1,30 @@
 # docs
 
-Docusaurus documentation site. Hosts the project overview, the cryptographic construction section, architecture diagrams, reproduction instructions, the SDK reference (generated from TSDoc), example walkthroughs, and the research paper.
+Docusaurus 3 site that hosts the public face of zkTGuard.
 
-The site is deployed to GitHub Pages from a personal account; the URL appears in the root README once a build is published. The zkTGuard paper itself lives in `/paper`.
+## Pages
+
+- Overview
+- Cryptographic construction
+- Architecture
+- Running the reference implementation
+- SDK reference
+- Examples
+- Paper
+- FAQ
+
+## Develop
+
+```bash
+cd docs
+pnpm install
+pnpm dev          # http://127.0.0.1:3000
+```
+
+## Build
+
+```bash
+pnpm build
+```
+
+The static site is written to `docs/build/`. GitHub Pages deployment is configured at the repository level — `gh-pages` branch publishes from `docs/build/`. URL will appear in the root README once the first deploy finishes.
