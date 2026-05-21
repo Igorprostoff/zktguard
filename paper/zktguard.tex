@@ -1,0 +1,358 @@
+\documentclass[11pt,a4paper]{article}
+
+% ---------------------------------------------------------------
+% zkTGuard: a reference paper draft for the v0.1 release.
+% This source compiles under TeX Live 2024 (`make`).
+% ---------------------------------------------------------------
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{hyperref}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{enumitem}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!60!black,
+  citecolor=blue!60!black,
+  urlcolor=blue!50!black,
+  pdftitle={zkTGuard: zkTLS-derived credentials on TON},
+  pdfauthor={Igor Prostov},
+}
+
+\newcommand{\sys}{zkTGuard}
+\newcommand{\TODO}[1]{{\color{red}\textbf{TODO:} #1}}
+
+\title{\sys{}: Privacy-preserving Telegram credentials on TON\\
+       \large via zkTLS proxy attestation and Groth16}
+\author{Igor Prostov}
+\date{v0.1 draft --- May 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\sys{} is an open-source research project that turns Telegram's
+existing trust signals into privacy-preserving on-chain credentials on
+TON. A proxy attestor witnesses the response to a Telegram-shaped HTTP
+endpoint, signs the transcript with EdDSA over BabyJubjub, and a
+Groth16 circuit over BLS12-381 attests in zero knowledge that the
+transcript decrypts to a JSON object whose ``account creation''
+timestamp predates a public threshold. A FunC verifier on TON checks
+the proof using the chain's BLS pairing precompile, records a
+per-application nullifier, and (in the next iteration) mints a
+soulbound credential NFT. We describe the construction, the v0.1
+reference implementation, the constraints we had to relax to stay
+inside a circuit-friendly arithmetic, and a roadmap towards a fully
+realised version of the design.
+\end{abstract}
+
+% ---------------------------------------------------------------
+\section{Introduction}\label{sec:intro}
+
+Telegram Mini Apps host hundreds of millions of users on TON. Sybil
+resistance for these apps is an unsolved problem: existing identity
+systems (Human Passport, World ID, Polygon ID) ignore the
+platform-native trust signals that already exist inside Telegram.
+\sys{} is, to the authors' knowledge, the first published design that
+uses Telegram itself as a credential issuer via zkTLS.
+
+The design has four moving parts: a proxy attestor (a stateless Go
+service), a prover (a stateless Rust service), a FunC verifier
+contract, and a soulbound credential contract. A client-side Mini App
+connects them via TON Connect 2.0. The bundle is published under MIT,
+with no hosted service, no telemetry, no fee handling, and no token.
+
+This paper describes the construction (\S\ref{sec:construction}), the
+reference implementation (\S\ref{sec:impl}), an evaluation
+(\S\ref{sec:eval}), the limitations of v0.1 (\S\ref{sec:limits}), and
+the open questions we believe v1 should address (\S\ref{sec:future}).
+
+% ---------------------------------------------------------------
+\section{Related work}\label{sec:related}
+
+\paragraph{Proof systems.} Groth16~\cite{Groth16} remains the canonical
+choice for circuits with stable verification keys. Universal-setup
+systems --- PLONK, Plonky3~\cite{Plonky3}, Halo2, and Binius~\cite{Binius}
+--- avoid per-circuit ceremonies but pay a runtime cost. v0.1 picks
+Groth16 because the on-chain verifier reduces to a single
+BLS\_PAIRING; a universal-setup variant is specified in
+\S\ref{sec:future}.
+
+\paragraph{Proxy attestation.} Reclaim Protocol~\cite{Reclaim} pioneered
+the modern proxy-attestation construction we re-use here: a notary
+forwards TLS records, signs the encrypted transcript, and the prover
+later proves in zero knowledge that a witnessed key decrypts to the
+required field. TLSNotary~\cite{TLSNotary} provides a stronger,
+MPC-TLS variant that we view as the natural v1 upgrade.
+
+\paragraph{Identity primitives.} Semaphore~\cite{Semaphore},
+zkLogin~\cite{zkLogin}, Sui zkLogin~\cite{SuiZkLogin}, and
+World ID~\cite{WorldID} all build credentials atop a non-revealing
+identity primitive. \sys{} reuses the same idea --- nullifiers as the
+on-chain primary key --- and adapts it to the Telegram + TON
+deployment surface.
+
+\paragraph{Folded proofs.} Nova~\cite{Nova} and HyperNova-style folding
+schemes offer a path to session continuity that the v0 per-action
+proof does not yet exploit. We treat them as future work
+(\S\ref{sec:future}).
+
+% ---------------------------------------------------------------
+\section{Cryptographic construction}\label{sec:construction}
+
+\subsection{Setup}
+
+Let $r$ be the order of the BLS12-381 scalar field, $G$ a generator of
+$\mathbb{G}_1$, $H$ a generator of $\mathbb{G}_2$, and $e:
+\mathbb{G}_1 \times \mathbb{G}_2 \to \mathbb{G}_T$ a Type-3 Ate pairing.
+A trusted setup produces $(\alpha, \beta, \gamma, \delta, \tau) \in
+(\mathbb{F}_r^\times)^5$ and a chain of $\mathrm{IC}_i \in \mathbb{G}_1$
+for $i \in \{0, \dots, n\}$ where $n$ is the number of public inputs.
+
+\subsection{Verification equation}
+
+The on-chain verifier accepts a proof
+$\pi = (A, B, C) \in \mathbb{G}_1 \times \mathbb{G}_2 \times \mathbb{G}_1$
+and a public-input vector $\mathbf{x} \in \mathbb{F}_r^n$ iff
+\begin{equation}
+e(A, B) \;=\; e(\alpha G,\, \beta H) \cdot e\!\big(\mathrm{vk}_x,\, \gamma H\big) \cdot e(C,\, \delta H),
+\end{equation}
+where
+\begin{equation}
+\mathrm{vk}_x \;=\; \mathrm{IC}_0 + \sum_{i=1}^{n} x_i \cdot \mathrm{IC}_i.
+\end{equation}
+The FunC verifier reduces this to a single four-pair pairing check:
+\begin{equation}
+e(A, B) \cdot e(-\alpha G,\, \beta H) \cdot e(-\mathrm{vk}_x,\, \gamma H) \cdot e(-C,\, \delta H) \;=\; 1.
+\end{equation}
+TON's \texttt{BLS\_PAIRING} opcode computes the product directly.
+
+\subsection{Public inputs}
+
+The v0.1 circuit publishes eight scalars in this order: \texttt{nonce},
+\texttt{app\_id}, \texttt{expiration}, \texttt{claim\_type},
+\texttt{nullifier}, \texttt{attestor\_pubkey\_x},
+\texttt{attestor\_pubkey\_y}, and \texttt{threshold\_months}. The
+high 32 bits of \texttt{nonce} carry the \texttt{chain\_id} so the
+verifier can enforce replay protection without a separate public
+input.
+
+\subsection{Nullifier}
+
+\begin{equation}
+\mathrm{nullifier} = \mathrm{Poseidon}_3\!\big(\mathit{user\_secret},\, \mathit{app\_id},\, \mathit{claim\_type}\big).
+\end{equation}
+Per-application, per-claim, deterministic, unlinkable across
+\texttt{app\_id} for the same user.
+
+\subsection{Constraint groups}
+
+The \texttt{account\_age} circuit has six sub-templates. Two are
+implemented in v0.1 (\texttt{TimestampThreshold},
+\texttt{NullifierPoseidon}); one is implemented for BabyJubjub EdDSA
+verification (\texttt{AttestorEdDSAVerify}); three remain stubs in v0.1
+(\texttt{AEADDecrypt}, \texttt{TranscriptCommitment},
+\texttt{JsonTimestampExtract}). The stubs land alongside Task 3 (the
+trusted-setup ceremony) in v0.2.
+
+\subsection{Trust model}
+
+The construction follows the proxy-attestation model. The attestor
+must not collude with the prover. v0.1 demonstrates with a single
+test attestor; the architecture admits a future attestor set with
+diverse operators using a threshold or set-membership check on chain.
+
+% ---------------------------------------------------------------
+\section{Implementation}\label{sec:impl}
+
+The reference implementation is a monorepo containing a Go attestor
+(\texttt{attestor/}), a Rust prover (\texttt{prover/}), four FunC
+contracts (\texttt{contracts/}), a Circom circuit
+(\texttt{circuits/}), a TypeScript SDK (\texttt{sdk/}), a Mini App
+(\texttt{miniapp/}), and three example Mini Apps
+(\texttt{examples/}). All components are MIT-licensed.
+
+\paragraph{Attestor.} Stateless Go binary. Hashes the upstream
+response with Poseidon over BN254 and signs with EdDSA on BabyJubjub
+using \texttt{iden3/go-iden3-crypto}. Exposes \texttt{/attest},
+\texttt{/pubkey}, and \texttt{/health}.
+
+\paragraph{Prover.} Stateless Rust binary. v0.1 emits \emph{synthetic}
+proofs against a placeholder VK whose scalars are public knowledge,
+so end-to-end sandbox tests exercise the on-chain verifier without
+having a real trusted-setup output yet. The CLI is
+\texttt{zktguard-prover prove --input <json> --output <proof.json>}.
+
+\paragraph{Verifier.} FunC contract. Embeds the (placeholder) VK as
+compile-time constants. Reads a proof and a public-input snake from
+the message body, computes $\mathrm{vk}_x$ via two
+\texttt{BLS\_G1\_MULTIEXP} calls joined by \texttt{BLS\_G1\_ADD}
+(FunC's asm directive caps positional args at 16), and invokes
+\texttt{BLS\_PAIRING} for the four-pair check. Records used
+nullifiers in a 256-bit dictionary.
+
+\paragraph{Soulbound credential.} A TEP-62-shaped Collection +
+non-transferable Item pair. Transfers throw exit \texttt{410};
+non-verifier mints throw exit \texttt{411}.
+
+\paragraph{App registry.} Stand-alone contract storing the canonical
+set of accepted \texttt{(app\_id, claim\_type)} pairs in a 96-bit
+dictionary. Admin-gated mutations.
+
+\paragraph{SDK and Mini App.} Pure TypeScript, browser-safe,
+no Buffer dependency. Bundle is well under 50 KB gzipped.
+
+% ---------------------------------------------------------------
+\section{Evaluation}\label{sec:eval}
+
+\subsection{On-chain cost}
+
+Sandbox measurements taken via \texttt{@ton/sandbox} v0.32 on
+\texttt{@ton/core} 0.62. Testnet numbers will replace these once
+deployment lands (see \texttt{contracts/DEPLOYMENTS.md}).
+
+\begin{center}
+\begin{tabular}{lr}
+Operation                                & Gas (sandbox) \\\hline
+Pairing sanity check, good pair          & 62\,741 \\
+Pairing sanity check, bad pair           & 62\,625 \\
+Groth16 verify, accept path              & 148\,881 \\
+Soulbound mint                           & TBD \\
+Registry register                        & TBD \\
+\end{tabular}
+\end{center}
+
+\subsection{Off-chain cost (synthetic prover)}
+
+The v0.1 prover does scalar arithmetic plus three fixed-base
+multiplications and one inverse. On a 2024 Apple~M2 in release mode
+the inner \texttt{prove()} call runs in tens of microseconds; the
+binary spends most of its wall time on JSON parsing.
+
+\subsection{Circuit constraints (forecast)}
+
+\begin{itemize}[leftmargin=2em]
+  \item \texttt{NullifierPoseidon}: $\sim 300$ constraints.
+  \item \texttt{TimestampThreshold}: $\sim 1\,000$ constraints.
+  \item \texttt{AttestorEdDSAVerify}: $\sim 4\,000$ constraints.
+  \item \texttt{AEADDecrypt}: tens of thousands of constraints once
+    AES-128-GCM lands.
+  \item \texttt{TranscriptCommitment} + \texttt{JsonTimestampExtract}:
+    folded into the AEAD body.
+\end{itemize}
+v0.1 reports an empty constraint total because the heavy groups are
+stubbed.
+
+% ---------------------------------------------------------------
+\section{Limitations}\label{sec:limits}
+
+\paragraph{Placeholder VK.} The verifier contract embeds a placeholder
+verification key. Anyone with the VK can craft an accepting proof.
+This is acceptable for v0.1's sandbox demonstrations but precludes
+mainnet deployment.
+
+\paragraph{Attestor curve.} BabyJubjub EdDSA, not BLS12-381 as the
+bible's Part C originally specifies. BLS verification inside a
+Groth16/bn128 circuit costs millions of constraints; BabyJubjub clocks
+in around 4\,000.
+
+\paragraph{No on-chain registry lookup.} The verifier hard-codes
+acceptance of \texttt{(1, 1)} in v0.1. A cross-contract send to the
+App Registry is the natural follow-up; an admin-pushed snapshot is
+the alternative.
+
+\paragraph{No real trusted setup.} The Powers-of-Tau choice is
+documented in \texttt{circuits/PTAU.md} but no Phase-2 contribution has
+been performed.
+
+\paragraph{No real Telegram traffic.} v0.1 runs against a stub server.
+
+% ---------------------------------------------------------------
+\section{Future work}\label{sec:future}
+
+\begin{enumerate}[leftmargin=2em]
+  \item Migrate proxy attestation to MPC-TLS (TLSNotary) once that
+    ecosystem matures.
+  \item Replace the per-action proof with folded proofs (Nova,
+    HyperNova) for session continuity.
+  \item Standardise the claim catalog beyond v0's
+    \texttt{account\_age}. Draft schema invites community
+    contribution rather than freezing one curve.
+  \item Cross-credential reputation: compose multiple verified claims
+    into a higher-assurance attestation.
+  \item Formal security proof of the proxy-attestation construction
+    against an adversarial Mini App author.
+  \item Alternative claim sources beyond Telegram, using the same
+    architecture with different proxy attestor configurations.
+  \item Mobile-side proving benchmarks across Android and iOS, varying
+    circuit size.
+\end{enumerate}
+
+% ---------------------------------------------------------------
+\appendix
+\section{Reproducibility}\label{app:repro}
+
+The exact source for this draft lives at
+\href{https://github.com/Igorprostoff/zktguard}{Igorprostoff/zktguard}.
+To rebuild every committed artifact from a clean clone, run:
+
+\begin{lstlisting}[language=bash]
+git clone https://github.com/Igorprostoff/zktguard.git
+cd zktguard
+bash scripts/reproduce.sh
+\end{lstlisting}
+
+\noindent
+The script and its expected output hashes are documented in
+\texttt{REPRODUCE.md} at the repo root.
+
+% ---------------------------------------------------------------
+\begin{thebibliography}{99}
+
+\bibitem{Groth16}
+J. Groth. \emph{On the size of pairing-based non-interactive arguments}.
+EUROCRYPT 2016.
+
+\bibitem{Reclaim}
+Reclaim Protocol. \emph{zkTLS via proxy attestation}.
+\url{https://reclaimprotocol.org}.
+
+\bibitem{TLSNotary}
+PSE TLSNotary. \emph{MPC-TLS for selective disclosure}.
+\url{https://tlsnotary.org}.
+
+\bibitem{zkLogin}
+Mysten Labs. \emph{zkLogin: an OAuth-friendly account scheme on Sui}.
+2023.
+
+\bibitem{SuiZkLogin}
+F. Baldimtsi et al. \emph{Sui zkLogin paper}. IACR ePrint, 2024.
+
+\bibitem{Semaphore}
+PSE. \emph{Semaphore: anonymous signaling on Ethereum}.
+\url{https://semaphore.pse.dev}.
+
+\bibitem{WorldID}
+Worldcoin. \emph{World ID protocol}.
+\url{https://worldcoin.org/world-id}.
+
+\bibitem{Nova}
+A. Kothapalli, S. Setty, I. Tzialla. \emph{Nova: Recursive zero-knowledge
+arguments from folding schemes}. CRYPTO 2022.
+
+\bibitem{Plonky3}
+Polygon Zero. \emph{Plonky3 specification}.
+\url{https://github.com/Plonky3/Plonky3}.
+
+\bibitem{Binius}
+B. Diamond, J. Posen. \emph{Succinct arguments over towers of binary
+fields}. IACR ePrint 2023/1784.
+
+\end{thebibliography}
+
+\end{document}
