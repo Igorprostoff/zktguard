@@ -1,6 +1,5 @@
-import type { SidebarsConfig } from "@docusaurus/plugin-content-docs";
-
-const sidebars: SidebarsConfig = {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const sidebars: any = {
   main: [
     { type: "doc", id: "overview", label: "Overview" },
     { type: "doc", id: "construction", label: "Cryptographic construction" },
@@ -11,6 +10,6 @@ const sidebars: SidebarsConfig = {
     { type: "doc", id: "paper", label: "Paper" },
     { type: "doc", id: "faq", label: "FAQ" },
   ],
-};
+} as const;
 
 export default sidebars;

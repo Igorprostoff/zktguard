@@ -18,9 +18,9 @@ import (
 
 // Server is the HTTP handler set.
 type Server struct {
-	att      *attestor.Attestor
-	stubURL  string
-	now      func() time.Time
+	att     *attestor.Attestor
+	stubURL string
+	now     func() time.Time
 }
 
 // New returns a Server. stubURL is the upstream "Telegram-shaped"

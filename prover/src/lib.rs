@@ -50,8 +50,12 @@ pub struct ProveInput {
     pub b_scalar: String,
 }
 
-fn default_a() -> String { "7".to_string() }
-fn default_b() -> String { "11".to_string() }
+fn default_a() -> String {
+    "7".to_string()
+}
+fn default_b() -> String {
+    "11".to_string()
+}
 
 /// Top-level CLI output. Hex strings are uppercase, no `0x`
 /// prefix — they paste straight into FunC `store_uint`s.
@@ -81,8 +85,8 @@ pub enum ProveError {
 }
 
 fn parse_fr(s: &str) -> Result<Fr, ProveError> {
-    let big = BigUint::parse_bytes(s.as_bytes(), 10)
-        .ok_or_else(|| ProveError::Parse(s.to_string()))?;
+    let big =
+        BigUint::parse_bytes(s.as_bytes(), 10).ok_or_else(|| ProveError::Parse(s.to_string()))?;
     Ok(Fr::from_le_bytes_mod_order(&big.to_bytes_le()))
 }
 
@@ -167,15 +171,27 @@ mod tests {
                 gamma_scalar: "1".into(),
                 delta_scalar: "1".into(),
                 ic_scalars: vec![
-                    "7".into(), "101".into(), "102".into(), "103".into(),
-                    "104".into(), "105".into(), "106".into(), "107".into(),
+                    "7".into(),
+                    "101".into(),
+                    "102".into(),
+                    "103".into(),
+                    "104".into(),
+                    "105".into(),
+                    "106".into(),
+                    "107".into(),
                     "108".into(),
                 ],
             },
             public_inputs: vec![
                 // pi[0..7]; same shape as Task-4 sandbox tests.
-                "1".into(), "2".into(), "3".into(), "4".into(),
-                "5".into(), "6".into(), "7".into(), "8".into(),
+                "1".into(),
+                "2".into(),
+                "3".into(),
+                "4".into(),
+                "5".into(),
+                "6".into(),
+                "7".into(),
+                "8".into(),
             ],
             a_scalar: "7".into(),
             b_scalar: "11".into(),
@@ -202,8 +218,17 @@ mod tests {
         let beta = parse_fr(&inp.vk.beta_scalar).unwrap();
         let gamma = parse_fr(&inp.vk.gamma_scalar).unwrap();
         let delta = parse_fr(&inp.vk.delta_scalar).unwrap();
-        let ic: Vec<Fr> = inp.vk.ic_scalars.iter().map(|s| parse_fr(s).unwrap()).collect();
-        let pi: Vec<Fr> = inp.public_inputs.iter().map(|s| parse_fr(s).unwrap()).collect();
+        let ic: Vec<Fr> = inp
+            .vk
+            .ic_scalars
+            .iter()
+            .map(|s| parse_fr(s).unwrap())
+            .collect();
+        let pi: Vec<Fr> = inp
+            .public_inputs
+            .iter()
+            .map(|s| parse_fr(s).unwrap())
+            .collect();
         let a = parse_fr(&inp.a_scalar).unwrap();
         let b = parse_fr(&inp.b_scalar).unwrap();
         let c = parse_fr(&out.c_scalar).unwrap();

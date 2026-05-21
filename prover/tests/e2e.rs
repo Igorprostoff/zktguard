@@ -74,12 +74,18 @@ fn cli_writes_a_proof_that_satisfies_the_pairing_equation() {
     let beta = parse_fr("1");
     let gamma = parse_fr("1");
     let delta = parse_fr("1");
-    let ic: Vec<Fr> = ["7","101","102","103","104","105","106","107","108"]
-        .iter().map(|s| parse_fr(s)).collect();
-    let pi: Vec<Fr> = ["12345","1","2147483647","1","305419896","5","7","6"]
-        .iter().map(|s| parse_fr(s)).collect();
+    let ic: Vec<Fr> = ["7", "101", "102", "103", "104", "105", "106", "107", "108"]
+        .iter()
+        .map(|s| parse_fr(s))
+        .collect();
+    let pi: Vec<Fr> = ["12345", "1", "2147483647", "1", "305419896", "5", "7", "6"]
+        .iter()
+        .map(|s| parse_fr(s))
+        .collect();
     let mut s_x = ic[0];
-    for i in 0..8 { s_x += ic[i + 1] * pi[i]; }
+    for i in 0..8 {
+        s_x += ic[i + 1] * pi[i];
+    }
     let lhs = a * b;
     let rhs = alpha * beta + gamma * s_x + delta * c;
     assert_eq!(lhs, rhs);

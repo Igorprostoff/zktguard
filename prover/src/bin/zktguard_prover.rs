@@ -5,7 +5,11 @@ use std::time::Instant;
 use clap::{Parser, Subcommand};
 
 #[derive(Parser, Debug)]
-#[command(name = "zktguard-prover", version, about = "zkTGuard reference prover (v0.1 synthetic)")]
+#[command(
+    name = "zktguard-prover",
+    version,
+    about = "zkTGuard reference prover (v0.1 synthetic)"
+)]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -31,7 +35,11 @@ enum Cmd {
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Prove { input, output, timed } => {
+        Cmd::Prove {
+            input,
+            output,
+            timed,
+        } => {
             let raw = fs::read_to_string(&input).unwrap_or_else(|e| {
                 eprintln!("read {}: {}", input.display(), e);
                 std::process::exit(1);
