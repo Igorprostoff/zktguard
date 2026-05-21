@@ -1,0 +1,13 @@
+{
+  "_comment": "PLACEHOLDER verification key matching the v0.1 FunC verifier (contracts/verifier/groth16_verifier.fc). Replaced by the real key produced by ../scripts/setup.sh once circom is installed and the trusted setup is run. DO NOT TRUST FOR PRODUCTION.",
+  "protocol": "groth16",
+  "curve": "bls12_381",
+  "n_public_inputs": 8,
+  "vk_alpha_scalar": "1",
+  "vk_beta_scalar": "1",
+  "vk_gamma_scalar": "1",
+  "vk_delta_scalar": "1",
+  "vk_ic_scalars": [
+    "7", "101", "102", "103", "104", "105", "106", "107", "108"
+  ]
+}

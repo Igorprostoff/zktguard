@@ -8,4 +8,4 @@ build/
 *.zkey
 *.ptau
 *_js/
-verification_key.json
+# verification_key.json is committed at account_age/verification_key.json
