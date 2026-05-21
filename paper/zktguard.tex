@@ -10,9 +10,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{amsmath, amssymb, amsthm}
 \usepackage{hyperref}
-\usepackage{microtype}
 \usepackage{xcolor}
-\usepackage{listings}
 \usepackage{enumitem}
 
 \hypersetup{
@@ -301,11 +299,11 @@ The exact source for this draft lives at
 \href{https://github.com/Igorprostoff/zktguard}{Igorprostoff/zktguard}.
 To rebuild every committed artifact from a clean clone, run:
 
-\begin{lstlisting}[language=bash]
+\begin{verbatim}
 git clone https://github.com/Igorprostoff/zktguard.git
 cd zktguard
 bash scripts/reproduce.sh
-\end{lstlisting}
+\end{verbatim}
 
 \noindent
 The script and its expected output hashes are documented in
