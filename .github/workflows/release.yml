@@ -26,34 +26,19 @@ jobs:
       - name: Install workspace
         run: pnpm install --frozen-lockfile
 
-      - name: Build contracts
-        working-directory: contracts
-        run: pnpm build
-
-      - name: Build SDK bundle
-        working-directory: sdk
-        run: pnpm build
-
-      - name: Build docs
-        working-directory: docs
-        run: pnpm build
-
-      - name: Set up TeX Live (for paper PDF)
-        uses: teatimeguest/setup-texlive-action@v3
-        with:
-          packages: scheme-basic latex-bin hyperref geometry microtype enumitem listings xcolor amsmath amsfonts
-
-      - name: Build paper PDF
-        working-directory: paper
-        run: make
+      - name: Build SDK + contracts + docs
+        run: |
+          pnpm --filter @zktguard/sdk build
+          (cd contracts && pnpm exec blueprint build --all)
+          pnpm --filter @zktguard/docs build
 
       - name: Collect release artefacts
         run: |
           mkdir -p release
-          cp paper/zktguard.pdf release/ || true
           cp circuits/account_age/verification_key.json release/verification_key.json
           cp contracts/build/*.compiled.json release/ || true
           cp REPRODUCE.md release/
+          cp CHANGELOG.md release/
           (cd sdk && tar -czf ../release/sdk-dist.tar.gz dist/)
           (cd docs && tar -czf ../release/docs-build.tar.gz build/)
 

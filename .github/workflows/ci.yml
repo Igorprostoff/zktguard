@@ -19,12 +19,12 @@ jobs:
           cache: pnpm
       - name: Install
         run: pnpm install --frozen-lockfile || pnpm install
+      - name: Build
+        run: pnpm build
       - name: Lint
         run: pnpm lint
       - name: Test
         run: pnpm test
-      - name: Build
-        run: pnpm build
       - name: Reproducibility check
         run: python3 scripts/check_reproduce.py
         continue-on-error: true  # SDK bundle may differ across Node toolchains until pinned
