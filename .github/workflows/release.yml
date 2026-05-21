@@ -32,6 +32,20 @@ jobs:
           (cd contracts && pnpm exec blueprint build --all)
           pnpm --filter @zktguard/docs build
 
+      - name: Install TeX Live for paper PDF
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            texlive-latex-base texlive-latex-recommended \
+            texlive-latex-extra texlive-fonts-recommended \
+            texlive-fonts-extra lmodern
+        continue-on-error: true
+
+      - name: Build paper PDF
+        working-directory: paper
+        run: make
+        continue-on-error: true
+
       - name: Collect release artefacts
         run: |
           mkdir -p release
@@ -39,6 +53,7 @@ jobs:
           cp contracts/build/*.compiled.json release/ || true
           cp REPRODUCE.md release/
           cp CHANGELOG.md release/
+          cp paper/zktguard.pdf release/ || echo "paper PDF not built (TeX install may have failed)"
           (cd sdk && tar -czf ../release/sdk-dist.tar.gz dist/)
           (cd docs && tar -czf ../release/docs-build.tar.gz build/)
 
@@ -51,4 +66,4 @@ jobs:
           files: |
             release/*
           fail_on_unmatched_files: false
-          draft: true
+          draft: false
