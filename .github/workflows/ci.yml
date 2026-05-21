@@ -25,6 +25,9 @@ jobs:
         run: pnpm test
       - name: Build
         run: pnpm build
+      - name: Reproducibility check
+        run: python3 scripts/check_reproduce.py
+        continue-on-error: true  # SDK bundle may differ across Node toolchains until pinned
 
   rust:
     name: Rust (prover)
