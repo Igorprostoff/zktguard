@@ -5,3 +5,4 @@ packages:
   - "miniapp"
   - "docs"
   - "examples/*"
+  - "prover/server"

@@ -63,6 +63,16 @@ title: Architecture
 6. SDK builds the verifier message body (4 refs) and hands it to TON Connect.
 7. User's wallet signs and broadcasts. Verifier checks the proof, records the nullifier, throws on any of 401–413.
 
+## Phase C async flow
+
+The verifier no longer mints synchronously. It parks an accepted proof
+under a fresh `query_id`, asks the registry whether the
+`(app_id, claim_type)` pair is registered, and on a positive reply
+records the nullifier and sends a mint message to the soulbound
+collection. The full state machine + bounce handling + gas budget per
+hop live in
+[`contracts/design/async-flow.md`](https://github.com/Igorprostoff/zktguard/blob/main/contracts/design/async-flow.md).
+
 ## What is _not_ wired in v0.1
 
 - The verifier does **not** yet cross-message the Soulbound Collection on success. Cross-contract send is a Task 4 follow-up.

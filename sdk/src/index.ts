@@ -92,6 +92,13 @@ export interface Credential {
   publicInputs: bigint[];
 }
 
+/** Status of an in-flight proof. */
+export type ProofStatus =
+  | { status: "parked" }
+  | { status: "minted" }
+  | { status: "rejected" }
+  | { status: "expired" };
+
 // ---------------------------------------------------------------------
 // Constants matching the FunC verifier
 // ---------------------------------------------------------------------
@@ -194,8 +201,68 @@ export class ZktGuardClient {
   }
 
   /**
-   * v0.2 reads the soulbound collection for `user`. Not yet wired to
-   * the deployed collection; returns null until Phase C lands.
+   * Look up the status of a proof previously submitted via
+   * {@link ZktGuardClient.requireClaim}. v0.2's verifier tracks
+   * parked proofs in an on-chain dictionary keyed by `queryId`; this
+   * method polls that dictionary plus the nullifier set to derive a
+   * coarse status.
+   */
+  async getProofStatus(
+    queryId: bigint,
+    nullifier: bigint,
+  ): Promise<ProofStatus> {
+    const client = this.config.tonClient;
+    if (!client) {
+      throw new Error(
+        "getProofStatus requires config.tonClient (TonClient) to be set",
+      );
+    }
+    const parkedRes = await client.runMethod(
+      this.verifierAddress,
+      "parked_entry",
+      [{ type: "int", value: queryId }],
+    );
+    const parked = parkedRes.stack.readNumber() !== 0;
+    if (parked) return { status: "parked" };
+    const usedRes = await client.runMethod(
+      this.verifierAddress,
+      "nullifier_used?",
+      [{ type: "int", value: nullifier }],
+    );
+    const used = usedRes.stack.readNumber() !== 0;
+    if (used) return { status: "minted" };
+    return { status: "rejected" };
+  }
+
+  /**
+   * Polls {@link ZktGuardClient.getProofStatus} every `intervalMs`
+   * (default 5 s) until the status leaves `"parked"` or `maxWaitMs`
+   * elapses (default 5 min). Returns the terminal status.
+   */
+  async waitForMint(
+    queryId: bigint,
+    nullifier: bigint,
+    opts: { intervalMs?: number; maxWaitMs?: number } = {},
+  ): Promise<ProofStatus> {
+    const intervalMs = opts.intervalMs ?? 5_000;
+    const maxWaitMs = opts.maxWaitMs ?? 300_000;
+    const start = Date.now();
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const s = await this.getProofStatus(queryId, nullifier);
+      if (s.status !== "parked") return s;
+      if (Date.now() - start > maxWaitMs) return { status: "expired" };
+      await new Promise((r) => setTimeout(r, intervalMs));
+    }
+  }
+
+  /**
+   * Look up an existing credential for `user`. v0.2's soulbound
+   * collection addresses items deterministically by index but does
+   * not yet maintain an owner→item index on chain — that landing is
+   * v0.3 work. Returns `null` until that index ships; demo apps
+   * persist the user's last credential client-side and poll via
+   * {@link ZktGuardClient.getProofStatus}.
    */
   async getCredential(
     user: Address,

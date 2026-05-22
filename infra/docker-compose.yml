@@ -1,0 +1,78 @@
+# Local-dev convenience for zkTGuard v0.2.
+#
+# Runs the three off-chain services side-by-side on the host network:
+#   - zktguard-stub          deterministic Telegram-shaped upstream
+#   - zktguard-attestor      Go proxy attestor with EdDSA-BabyJubjub
+#   - zktguard-prover-server Node HTTP wrapper around snarkjs
+#
+# This file does NOT include any hosted target. zkTGuard is a research
+# artifact — no cloud, no managed service, no operated infrastructure.
+# The compose file exists so contributors can stand the full stack up
+# locally with `docker compose up`.
+#
+# Bind mounts keep secrets and the proving key OUT of the image:
+#   - attestor key      ../attestor/keys/attestor.hex  (mode 600, gitignored)
+#   - proving key       ../circuits/build/account_age_pkey.zkey
+#   - circuit wasm      ../circuits/build/circuit_js/circuit.wasm
+#   - verification key  ../circuits/account_age/verification_key.json
+
+services:
+  stub:
+    image: golang:1.22-alpine
+    working_dir: /work
+    volumes:
+      - ../attestor:/work:ro
+    command: >
+      sh -c "go run ./cmd/zktguard-stub --addr 0.0.0.0:7676"
+    ports:
+      - "7676:7676"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:7676/account"]
+      interval: 5s
+      timeout: 2s
+      retries: 10
+
+  attestor:
+    image: golang:1.22-alpine
+    working_dir: /work
+    volumes:
+      - ../attestor:/work:ro
+      - attestor-keys:/keys:rw
+    command: >
+      sh -c "
+      [ -f /keys/attestor.hex ] || (cd /work && bash scripts/gen_attestor_key.sh /keys/attestor.hex);
+      go run ./cmd/zktguard-attestor --addr 0.0.0.0:7677 --upstream http://stub:7676 --key /keys/attestor.hex
+      "
+    depends_on:
+      stub:
+        condition: service_healthy
+    ports:
+      - "7677:7677"
+
+  prover-server:
+    image: node:20-bookworm
+    working_dir: /repo/prover/server
+    volumes:
+      - ..:/repo:ro
+      - prover-node-modules:/repo/prover/server/node_modules
+    environment:
+      ADDR: "0.0.0.0"
+      PORT: "7679"
+      WASM_PATH: "/repo/circuits/build/circuit_js/circuit.wasm"
+      PKEY_PATH: "/repo/circuits/build/account_age_pkey.zkey"
+    command: >
+      sh -c "
+      corepack enable && corepack prepare pnpm@9 --activate &&
+      pnpm install --prod &&
+      pnpm start
+      "
+    ports:
+      - "7679:7679"
+    depends_on:
+      - attestor
+
+volumes:
+  attestor-keys:
+    driver: local
+  prover-node-modules:
+    driver: local

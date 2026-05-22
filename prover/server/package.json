@@ -1,0 +1,22 @@
+{
+  "name": "@zktguard/prover-server",
+  "version": "0.0.0",
+  "private": true,
+  "description": "HTTP wrapper around snarkjs that the SDK posts witnesses to.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "start": "tsx src/index.ts",
+    "test": "tsx --test src/index.test.ts"
+  },
+  "dependencies": {
+    "@noble/curves": "^1.4.0",
+    "snarkjs": "^0.7.4"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "tsx": "^4.7.0",
+    "typescript": "^5.4.5"
+  }
+}
