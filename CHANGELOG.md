@@ -6,6 +6,48 @@ follow SemVer.
 
 ## [Unreleased]
 
+### v0.2 Phase A — remote prover server (Task A5 closing piece)
+
+- New workspace `prover/server` ships `zktguard-prover-server`, a
+  Node HTTP wrapper around `snarkjs.groth16.fullProve`. Listens on
+  `127.0.0.1:7679` by default. Endpoints `/health` and `POST /prove`.
+  Tests via `node --test` (tsx).
+- SDK's `requireClaim` already posts to `proverUrl`; the server is
+  the missing peer.
+
+### v0.2 Phase C — SDK status + design doc (Tasks C1, C7 closing pieces)
+
+- `contracts/design/async-flow.md` documents the four-message
+  verifier→registry→verifier→collection sequence, the parked-proof
+  state machine, bounce handling, gas budgets, and failure modes.
+  Linked from the Docusaurus architecture page.
+- SDK gains `getProofStatus(queryId, nullifier)` returning
+  `{ status: "parked" | "minted" | "rejected" | "expired" }` and a
+  `waitForMint()` polling helper. `getCredential` documented as a
+  v0.3 stub (the collection lacks an owner→item index on chain).
+
+### v0.2 Phase D — Docker compose + demo doc (Tasks D2, D5)
+
+- New `infra/docker-compose.yml` stands up the off-chain stack (stub
+  + attestor + prover-server) on host network with proper bind mounts.
+- `docs/demo.md` is the five-minute walk-through pointing at the
+  local compose stack. The 90-second phone-recorded video portion of
+  Task D5 is deferred until Task D1 (testnet deploy) lands.
+
+### v0.2 known deferrals (still open for v0.3)
+
+- **Phase B implementation (Tasks B2–B7).** The design doc is in;
+  the actual ChaCha20 + Poly1305 + AEAD Circom templates are a
+  multi-day engineering effort and have not been written. Tracked
+  in `paper/design/chacha20-circuit.md`.
+- **Task D1 — testnet deployment.** Needs a funded testnet wallet,
+  which this autonomous flow intentionally cannot provide. Deploy
+  scripts (`pnpm --filter @zktguard/contracts deploy:*`) are ready.
+- **Task D4 — Playwright e2e.** Gated on D1.
+- **Task D6 — paper revisions with testnet measurements.** Gated on
+  D1.
+- **v0.2 release tag.** Not cut. Will land once the above unblock.
+
 ### v0.2 Phase C — cross-contract async wiring
 
 The verifier, registry, and soulbound collection now talk to each
