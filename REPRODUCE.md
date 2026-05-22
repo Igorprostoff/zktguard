@@ -14,14 +14,14 @@ to this table and fails on any mismatch.
 | Path                                                | sha256 |
 | --------------------------------------------------- | ------ |
 | `contracts/build/PairingCheck.compiled.json`        | `8fea98464ee76b475c26d865389625e13f9ea19410728712d415324eefb9f567` |
-| `contracts/build/Groth16Verifier.compiled.json`     | `774b811b5417ba4975964fd3cf702ddfc05b92a1be0022b214453d858ae10a11` |
+| `contracts/build/Groth16Verifier.compiled.json`     | `2b0a3af099e5ee3aff46c29143ef8b3123bd609e47c02e5401a787f84f0ff599` |
 | `contracts/build/SoulboundCollection.compiled.json` | `0f26c9d510769c3eb31270c3eb9159a2fc2b47d69ec94a071101fc560dd3433b` |
 | `contracts/build/SoulboundItem.compiled.json`       | `13e1ce5ab92bf27d746cdfd58e7c9c30c0060edfb5d8b235ecfb465ac0e3aa0e` |
 | `contracts/build/AppRegistry.compiled.json`         | `bc712d0d2d8923736f78ec7e167dc420ef88c30a1c7167f00e78af3f03494979` |
-| `sdk/dist/index.mjs`                                | `430e9781fecfc8e1066f66ff6a4685cd255346c162964851b78e68e07dbf0b50` |
-| `sdk/dist/index.js`                                 | `51d26274e390eb7a57e340cc55e36c0e85dc0e2807b61839cc22bbf586dc5865` |
-| `sdk/dist/index.d.ts`                               | `b8dd843f8701ec5a9544d4332750216ac082bd36745716de0743bc9181c48855` |
-| `circuits/account_age/verification_key.json`        | `21177ad115ad2801b6d2298739ae64db0d6b422faf90846926d9679258bd5cb9` |
+| `sdk/dist/index.mjs`                                | `0fdd8f84bdb4a9289a98aa81600c41a6b7bb0a17d86778c91e7eaf9b6e399580` |
+| `sdk/dist/index.js`                                 | `af7bda78c7e214935333cecea7872f3a5b18f45842095617abf6796ddfb90ceb` |
+| `sdk/dist/index.d.ts`                               | `05238c6d0926b4da211ccd39c41efe7f923f38785c23637497b00d3b5ef68841` |
+| `circuits/account_age/verification_key.json`        | `80f52ddf68829dd09782f56570b1b2787e3f4b4e180dc9a4be88e54dcd99e243` |
 
 ## Host-dependent artifacts
 

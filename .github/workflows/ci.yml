@@ -10,6 +10,8 @@ jobs:
   node:
     name: Node / pnpm
     runs-on: ubuntu-latest
+    env:
+      CIRCOM_REV: v2.2.0
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -17,6 +19,21 @@ jobs:
         with:
           node-version: 20
           cache: pnpm
+
+      # circom v2 (built from source — iden3 do not ship prebuilt
+      # binaries). Cached by the pinned CIRCOM_REV so subsequent runs
+      # restore in under a second.
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Cache circom
+        id: cache-circom
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/bin/circom
+          key: circom-${{ env.CIRCOM_REV }}-${{ runner.os }}
+      - name: Install circom
+        if: steps.cache-circom.outputs.cache-hit != 'true'
+        run: bash scripts/install_circom.sh
+
       - name: Install
         run: pnpm install --frozen-lockfile || pnpm install
       - name: Build

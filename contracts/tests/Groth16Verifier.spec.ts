@@ -1,36 +1,62 @@
 import { Blockchain, SandboxContract, TreasuryContract } from "@ton/sandbox";
 import { beginCell, Cell, toNano } from "@ton/core";
 import { compile } from "@ton/blueprint";
+import * as fs from "node:fs";
+import * as path from "node:path";
 import "@ton/test-utils";
 
 import {
   Groth16Verifier,
   PublicInputs,
   buildPublicInputsCell,
-  craftSyntheticProof,
-  packNonce,
   GROTH16_OP_VERIFY_CLAIM,
+  packNonce,
 } from "../wrappers/Groth16Verifier";
 
-const ACCEPTED_APP_ID = 1n;
-const ACCEPTED_CLAIM = 1n;
-const CHAIN_ID = 1n;
-
-function basePublicInputs(overrides: Partial<PublicInputs> = {}): PublicInputs {
-  const base: PublicInputs = {
-    nonce: packNonce(CHAIN_ID, 0xdead_beefn),
-    app_id: ACCEPTED_APP_ID,
-    expiration: BigInt(2 ** 31 - 1), // far future
-    claim_type: ACCEPTED_CLAIM,
-    nullifier: 0x1234_5678_9abc_def0n,
-    attestor_pubkey_x: 0x5n,
-    attestor_pubkey_y: 0x7n,
-    threshold_months: 6n,
-  };
-  return { ...base, ...overrides };
+interface Fixture {
+  aHex: string;
+  bHex: string;
+  cHex: string;
+  publicInputs: string[];
 }
 
-describe("Groth16Verifier", () => {
+const FIXTURE: Fixture = JSON.parse(
+  fs.readFileSync(path.join(__dirname, "fixtures", "phase_a_accept.json"), "utf8"),
+);
+
+// v0.2 Phase-A public-input order (output-first):
+//   pi[0] = nullifier
+//   pi[1] = nonce
+//   pi[2] = app_id
+//   pi[3] = expiration
+//   pi[4] = claim_type
+//   pi[5] = attestor_pubkey_x
+//   pi[6] = attestor_pubkey_y
+//   pi[7] = threshold_months
+
+function fixturePublicInputs(): PublicInputs {
+  const v = FIXTURE.publicInputs.map((s) => BigInt(s));
+  return {
+    nullifier: v[0],
+    nonce: v[1],
+    app_id: v[2],
+    expiration: v[3],
+    claim_type: v[4],
+    attestor_pubkey_x: v[5],
+    attestor_pubkey_y: v[6],
+    threshold_months: v[7],
+  };
+}
+
+function fixtureProof() {
+  return {
+    a: Buffer.from(FIXTURE.aHex, "hex"),
+    b: Buffer.from(FIXTURE.bHex, "hex"),
+    c: Buffer.from(FIXTURE.cHex, "hex"),
+  };
+}
+
+describe("Groth16Verifier (v0.2 Phase A, real proof fixture)", () => {
   let code: Cell;
   beforeAll(async () => {
     code = await compile("Groth16Verifier");
@@ -53,9 +79,9 @@ describe("Groth16Verifier", () => {
     });
   });
 
-  it("accepts a valid synthetic proof under the placeholder VK", async () => {
-    const pi = basePublicInputs();
-    const proof = craftSyntheticProof(pi);
+  it("accepts the fixture proof against the real Phase-A VK", async () => {
+    const pi = fixturePublicInputs();
+    const proof = fixtureProof();
 
     const r = await verifier.sendVerifyClaim(deployer.getSender(), {
       value: toNano("0.5"),
@@ -79,14 +105,13 @@ describe("Groth16Verifier", () => {
   });
 
   it("rejects a proof with a flipped C byte with exit 401", async () => {
-    const pi = basePublicInputs({ nullifier: 0x401_aaaa_bbbb_ccccn });
-    const proof = craftSyntheticProof(pi);
-
-    // Flip the high byte of C — still on-curve only by accident; the
-    // BLS_G1_INGROUP filter catches most random tampering, so we make
-    // the flip subtler by toggling the sign-of-y compression flag.
+    const pi = fixturePublicInputs();
+    const proof = fixtureProof();
+    // Toggle the Y-sign compression flag on C. The point stays on
+    // curve (just negated) so the BLS_G1_INGROUP filter passes, and
+    // only the pairing equation fails.
     const tampered = Buffer.from(proof.c);
-    tampered[0] ^= 0x20; // toggle Y sign bit on compressed G1
+    tampered[0] ^= 0x20;
     const badProof = { ...proof, c: tampered };
 
     const r = await verifier.sendVerifyClaim(deployer.getSender(), {
@@ -99,15 +124,13 @@ describe("Groth16Verifier", () => {
     const tx = r.transactions.find(
       (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
     );
-    expect(tx).toBeDefined();
-    const exit = (tx as any).description?.computePhase?.exitCode;
-    expect(exit).toBe(401);
+    expect((tx as any).description?.computePhase?.exitCode).toBe(401);
     expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(false);
   });
 
   it("rejects a replayed nullifier with exit 402", async () => {
-    const pi = basePublicInputs({ nullifier: 0x402_cafe_babe_0001n });
-    const proof = craftSyntheticProof(pi);
+    const pi = fixturePublicInputs();
+    const proof = fixtureProof();
 
     const first = await verifier.sendVerifyClaim(deployer.getSender(), {
       value: toNano("0.5"),
@@ -117,13 +140,10 @@ describe("Groth16Verifier", () => {
     });
     expect(
       (first.transactions.find(
-        (t) =>
-          t.inMessage?.info.dest?.toString() === verifier.address.toString(),
+        (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
       ) as any)?.description?.computePhase?.success,
     ).toBe(true);
 
-    // Same proof and nullifier again: should fail with 402 before
-    // touching the pairing opcode.
     const second = await verifier.sendVerifyClaim(deployer.getSender(), {
       value: toNano("0.5"),
       queryId: 11n,
@@ -137,11 +157,8 @@ describe("Groth16Verifier", () => {
   });
 
   it("rejects an expired proof with exit 403", async () => {
-    const pi = basePublicInputs({
-      nullifier: 0x403_0000_0000_aaaan,
-      expiration: 1n, // 1970-01-01 plus a second — far in the past
-    });
-    const proof = craftSyntheticProof(pi);
+    const pi = { ...fixturePublicInputs(), expiration: 1n };
+    const proof = fixtureProof();
 
     const r = await verifier.sendVerifyClaim(deployer.getSender(), {
       value: toNano("0.5"),
@@ -156,11 +173,8 @@ describe("Groth16Verifier", () => {
   });
 
   it("rejects an unknown app_id with exit 404", async () => {
-    const pi = basePublicInputs({
-      nullifier: 0x404_0000_0000_aaaan,
-      app_id: 999n,
-    });
-    const proof = craftSyntheticProof(pi);
+    const pi = { ...fixturePublicInputs(), app_id: 999n };
+    const proof = fixtureProof();
 
     const r = await verifier.sendVerifyClaim(deployer.getSender(), {
       value: toNano("0.5"),
@@ -175,11 +189,8 @@ describe("Groth16Verifier", () => {
   });
 
   it("rejects a chain_id mismatch with exit 405", async () => {
-    const pi = basePublicInputs({
-      nullifier: 0x405_0000_0000_aaaan,
-      nonce: packNonce(2n, 0xfeedn), // chain_id 2 ≠ contract's 1
-    });
-    const proof = craftSyntheticProof(pi);
+    const pi = { ...fixturePublicInputs(), nonce: packNonce(2n, 0xfeedn) };
+    const proof = fixtureProof();
 
     const r = await verifier.sendVerifyClaim(deployer.getSender(), {
       value: toNano("0.5"),
@@ -194,7 +205,7 @@ describe("Groth16Verifier", () => {
   });
 
   it("encodes the public-input cell snake stably (3 + 3 + 2)", () => {
-    const pi = basePublicInputs();
+    const pi = fixturePublicInputs();
     const head = buildPublicInputsCell(pi);
     expect(head.bits.length).toBe(3 * 256);
     expect(head.refs.length).toBe(1);

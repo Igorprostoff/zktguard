@@ -39,45 +39,26 @@ export async function runClaimFlow(
     const body = buildVerifierMessageBody({
       queryId: BigInt(Date.now()) & ((1n << 63n) - 1n),
       proof: credential.proof,
-      publicInputs: rebuildPublicInputs(credential, claimOptions),
+      publicInputs: credential.publicInputs,
     });
+    const bocBytes = body.toBoc();
+    const bocB64 =
+      typeof Buffer !== "undefined"
+        ? Buffer.from(bocBytes).toString("base64")
+        : btoa(String.fromCharCode(...bocBytes));
     await args.tonConnectUI.sendTransaction({
       validUntil: Math.floor(Date.now() / 1000) + 600,
       messages: [
         {
           address: args.verifierAddress,
           amount: "500000000", // 0.5 TON
-          payload: body.toBoc().toString("base64"),
+          payload: bocB64,
         },
       ],
     });
   }
 
   return credential;
-}
-
-/** Reconstruct the public-input vector that the prover used so we
- *  can attach the same one to the wallet payload. v0 keeps the
- *  shape minimal — Task 9.5 will lift this into the SDK once the
- *  example apps shake out the API.
- */
-function rebuildPublicInputs(
-  credential: Credential,
-  opts: ReturnType<typeof sampleClaimOptions>,
-): bigint[] {
-  // Placeholder reconstruction: zero for the attestor pubkey + nonce
-  // so the message is well-formed even though the verifier would
-  // throw 401 against the real VK once Task 3 lands.
-  return [
-    0n, // nonce — actual value baked into requireClaim
-    opts.appId,
-    opts.expirationSec,
-    opts.claimType,
-    credential.nullifier,
-    0n,
-    0n,
-    opts.thresholdMonths,
-  ];
 }
 
 function sampleClaimOptions() {

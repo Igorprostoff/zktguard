@@ -59,7 +59,7 @@ export function App() {
 
       <div className="card">
         <div className="row between" style={{ marginBottom: 12 }}>
-          <span className="badge">v0.1 placeholder VK</span>
+          <span className="badge">v0.2 Phase A — real VK</span>
           <TonConnectButton />
         </div>
         <button
@@ -118,8 +118,9 @@ function buildConfig(): ZktGuardConfig {
   return {
     network: (env.VITE_NETWORK as ZktGuardConfig["network"]) ?? "testnet",
     verifierAddress: env.VITE_VERIFIER_ADDRESS ??
-      // Placeholder until Task 4 is deployed to testnet.
+      // Placeholder until Task D1 deploys to testnet.
       "EQDk2VTvn04SUKJrW7rXahzdF8_Qi6utb0wj43InCu9vdjrR",
     attestorUrl: env.VITE_ATTESTOR_URL ?? "http://127.0.0.1:7677",
+    proverUrl: env.VITE_PROVER_URL ?? "http://127.0.0.1:7679",
   };
 }

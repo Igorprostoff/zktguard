@@ -1,45 +1,57 @@
 # Powers of Tau
 
-zkTGuard v0.1 will use a published community Powers-of-Tau ceremony
-artifact. v0 does not run a new ceremony.
+zkTGuard v0.2 Phase A uses a **research-grade local Powers of Tau**
+ceremony for the BLS12-381 curve. v0.1's plan to download a published
+Hermez (bn128) ceremony was abandoned for the curve-unification reasons
+documented in `circuits/STATS.md` and the paper's Construction section:
+the on-chain verifier reads BLS12-381 pairing precompiles, the prover
+emits BLS12-381 Groth16 proofs, and the circuit must therefore target
+BLS12-381 too.
 
-## Candidate ceremonies
+There is no widely-published, small-scale BLS12-381 ceremony to draw
+from. v0.2 generates one locally with a deterministic Phase-1 + Phase-2
+contribution; v0.3 will participate in (or coordinate) a multi-party
+ceremony.
 
-| Ceremony | Curve | Max degree | URL |
-| -------- | ----- | ---------- | --- |
-| Hermez (PSE)   | bn128     | 2^28 | https://blog.hermez.io/hermez-cryptographic-setup/ |
-| Aztec Ignition | bn128     | 2^25 | https://aztec.network/ignition |
-| Ethereum KZG   | BLS12-381 | 2^15 | https://ceremony.ethereum.org |
+## v0.2 pinned ceremony
 
-## v0.1 pinned ceremony
+| Field | Value |
+| ----- | ----- |
+| Curve | BLS12-381 |
+| Phase-1 capacity | 2^14 (16 384 constraints) |
+| Phase-1 entropy | `zktguard-deterministic-seed-0001` (research-only) |
+| Phase-2 entropy | see `circuits/PHASE2_SEED.txt` |
+| Tooling | `snarkjs` v0.7.4 |
 
+Reproduce with:
+
+```bash
+cd circuits
+bash scripts/install_circom.sh    # if circom is not on PATH yet
+bash scripts/setup.sh
 ```
-ceremony:        Hermez (PSE) Phase 1
-file:            powersOfTau28_hez_final_15.ptau
-sha256:          46bd6c10cefe92b6b5d3e23ff5c8a1ed85cfd5b29ab9b96a4d59ae6e8c4a05d6
-degree (2^k):    k = 15
-constraint cap:  2^15 - 1 = 32 767
-url:             https://hermez.s3-eu-west-1.amazonaws.com/powersOfTau28_hez_final_15.ptau
-```
 
-The `_15` capacity is enough for v0.1's circuit (≈8 k constraints once
-the stubs are replaced, comfortable headroom). Larger capacities use
-the same Hermez ceremony — bump the `_XX` suffix and re-pin both the
-URL and the SHA-256 in `scripts/setup.sh`.
-
-> The SHA-256 above is a placeholder pinned for v0.1 reproducibility
-> tooling. Re-pin against the actual digest the first time
-> `scripts/setup.sh` succeeds on a clean machine; CI then asserts the
-> committed hash matches the downloaded file.
+The script writes `circuits/build/pot14_final.ptau`,
+`circuits/build/account_age_pkey.zkey`, and
+`circuits/account_age/verification_key.json`. Of these, only the VK
+is committed (the others are large and gitignored).
 
 ## Storage convention
 
-The `.ptau` file is **not** committed (it can be hundreds of MB).
-`scripts/setup.sh` downloads it on demand and verifies the SHA-256
-above before using it.
+The proving key (`.zkey`) and the PoT (`.ptau`) are **not** committed.
+They are reproduced from source. Anyone running `scripts/setup.sh` on a
+clean clone gets byte-identical files, since both phases are seeded
+deterministically.
 
-## Phase 2
+## Why not a community ceremony?
 
-A deterministic Phase-2 contribution lives in `scripts/setup.sh`. The
-seed is the constant `PHASE2_SEED` — override the env var to mix in
-fresh entropy when running a real (non-deterministic) ceremony.
+BLS12-381 small-degree ceremonies are rare. The Ethereum KZG ceremony
+targets KZG (not Groth16) and uses a different capacity profile. The
+PSE Hermez ceremony was bn128, and v0.2 explicitly moves off bn128.
+
+A v0.3 follow-up will either:
+- Run a multi-party Phase-2 with named contributors (research
+  collaborators only — still no commercial relationships), or
+- Wait for a credible community BLS12-381 ceremony to publish.
+
+Either way, v0.2's local PoT is intentionally a research placeholder.

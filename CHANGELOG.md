@@ -4,6 +4,43 @@ All notable changes are recorded here. The format roughly follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions
 follow SemVer.
 
+## [Unreleased]
+
+### v0.2 Phase A — real trusted setup
+
+The placeholder VK from v0.1 is retired in favour of a real
+deterministic Phase-2 contribution against a local BLS12-381 Powers of
+Tau ceremony.
+
+- **Circuit retargeted to BLS12-381.** v0.1 compiled to bn128 by
+  default; v0.2 invokes `circom -p bls12381` so the Groth16 verifier
+  on TON (which reads BLS12-381 pairing precompiles) actually matches
+  the curve the proof lives in.
+- **Phase-A slim circuit.** Drops the v0.1 stubs whose witness
+  generation required external fixtures (AEAD, transcript commitment,
+  attestor signature). Phase B (next) reintroduces a real
+  ChaCha20-Poly1305 body in-circuit.
+- **Real trusted setup.** `circuits/scripts/setup.sh` performs a local
+  BLS12-381 PoT (capacity 2^14) with deterministic Phase-1 and Phase-2
+  seeds, then exports the VK. Idempotent: set `FORCE_REGEN=1` to
+  rebuild. See `circuits/PTAU.md` for the research-grade caveat.
+- **Public-input layout change.** `nullifier` is now the circuit's
+  output and therefore the FIRST public signal in the proof's
+  public-input vector. The remaining seven follow the circuit's
+  `public []` declaration. The FunC verifier and the SDK encode the
+  new order; the v0.1 `(nonce, …, nullifier, …)` shape is retired.
+- **SDK strips synthetic proving.** `craftSyntheticProof` and
+  `PLACEHOLDER_VK` are removed. `requireClaim()` now posts the witness
+  to a remote prover via `config.proverUrl`. `init()` validates the
+  field is set.
+- **circom v2.2 in CI.** Built from source via
+  `scripts/install_circom.sh` and cached across runs.
+- **Real-proof fixture for sandbox tests.** Committed at
+  `contracts/tests/fixtures/phase_a_accept.json`. The Groth16Verifier
+  sandbox suite verifies the fixture end-to-end against the real VK;
+  reject paths mutate fields of the fixture to hit each error code
+  without re-proving.
+
 ## [v0.1] — 2026-05-21
 
 First tagged research-artifact release. Everything is testnet-only; do

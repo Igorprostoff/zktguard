@@ -23,6 +23,7 @@ export function ExampleApp(props: ExampleAppProps) {
   const verifierAddress =
     env.VITE_VERIFIER_ADDRESS ?? props.defaultVerifier;
   const attestorUrl = env.VITE_ATTESTOR_URL ?? "http://127.0.0.1:7677";
+  const proverUrl = env.VITE_PROVER_URL ?? "http://127.0.0.1:7679";
 
   const client = useMemo(
     () =>
@@ -30,8 +31,9 @@ export function ExampleApp(props: ExampleAppProps) {
         network: env.VITE_NETWORK ?? "testnet",
         verifierAddress,
         attestorUrl,
+        proverUrl,
       }),
-    [env.VITE_NETWORK, verifierAddress, attestorUrl],
+    [env.VITE_NETWORK, verifierAddress, attestorUrl, proverUrl],
   );
 
   const userAddress = useTonAddress();

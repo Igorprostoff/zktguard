@@ -8,47 +8,23 @@ import {
   Sender,
   SendMode,
 } from "@ton/core";
-import { bls12_381 } from "@noble/curves/bls12-381";
 
 export const GROTH16_OP_VERIFY_CLAIM = 0x76657266;
 
-export const SCALAR_FIELD_ORDER = bls12_381.fields.Fr.ORDER;
-
-const G1_BASE = bls12_381.G1.ProjectivePoint.BASE;
-const G2_BASE = bls12_381.G2.ProjectivePoint.BASE;
-
-// ---------------------------------------------------------------------
-// Placeholder VK scalars. Mirror the FunC constants exactly so JS-side
-// proof crafting yields proofs that the contract will accept. Replace
-// with values derived from Task 3's trusted setup once that lands.
-// ---------------------------------------------------------------------
-
-export interface VkScalars {
-  alpha: bigint;
-  beta: bigint;
-  gamma: bigint;
-  delta: bigint;
-  ic: bigint[];
-}
-
-export const PLACEHOLDER_VK: VkScalars = {
-  alpha: 1n,
-  beta: 1n,
-  gamma: 1n,
-  delta: 1n,
-  ic: [7n, 101n, 102n, 103n, 104n, 105n, 106n, 107n, 108n],
-};
-
 // ---------------------------------------------------------------------
 // Public input encoding (8 × 256-bit scalars, snake of 3 + 3 + 2 cells)
+//
+// v0.2 Phase A: nullifier is the circuit's output and therefore the
+// FIRST public signal in the proof's public-input vector. The remaining
+// seven follow the circuit's `public []` declaration order.
 // ---------------------------------------------------------------------
 
 export interface PublicInputs {
+  nullifier: bigint;
   nonce: bigint;
   app_id: bigint;
   expiration: bigint;
   claim_type: bigint;
-  nullifier: bigint;
   attestor_pubkey_x: bigint;
   attestor_pubkey_y: bigint;
   threshold_months: bigint;
@@ -56,11 +32,11 @@ export interface PublicInputs {
 
 export function publicInputsToVector(pi: PublicInputs): bigint[] {
   return [
+    pi.nullifier,
     pi.nonce,
     pi.app_id,
     pi.expiration,
     pi.claim_type,
-    pi.nullifier,
     pi.attestor_pubkey_x,
     pi.attestor_pubkey_y,
     pi.threshold_months,
@@ -114,77 +90,13 @@ export function packNonce(chainId: bigint, random: bigint): bigint {
 }
 
 // ---------------------------------------------------------------------
-// Synthetic valid-proof crafter
-//
-// For the placeholder VK above, the Groth16 verification equation
-// reduces to
-//
-//     a · b ≡ α·β + γ·s_x + δ·c   (mod r)
-//
-// where s_x = IC[0] + Σ IC[i+1] · pi[i].
-// Pick (a, b) freely and solve for c.
+// Proof shape
 // ---------------------------------------------------------------------
 
 export interface Groth16Proof {
   a: Buffer; // 48 bytes (G1 compressed)
   b: Buffer; // 96 bytes (G2 compressed)
   c: Buffer; // 48 bytes (G1 compressed)
-}
-
-function modR(x: bigint): bigint {
-  const r = SCALAR_FIELD_ORDER;
-  const m = x % r;
-  return m >= 0n ? m : m + r;
-}
-
-function modInverse(x: bigint): bigint {
-  // Fermat: x^(r-2) mod r
-  return modPow(x, SCALAR_FIELD_ORDER - 2n, SCALAR_FIELD_ORDER);
-}
-
-function modPow(base: bigint, exp: bigint, mod: bigint): bigint {
-  let r = 1n;
-  let b = base % mod;
-  let e = exp;
-  while (e > 0n) {
-    if (e & 1n) r = (r * b) % mod;
-    b = (b * b) % mod;
-    e >>= 1n;
-  }
-  return r;
-}
-
-export function craftSyntheticProof(
-  pi: PublicInputs,
-  opts: { a?: bigint; b?: bigint } = {},
-): Groth16Proof & { aScalar: bigint; bScalar: bigint; cScalar: bigint } {
-  const v = publicInputsToVector(pi);
-  const { alpha, beta, gamma, delta, ic } = PLACEHOLDER_VK;
-
-  let s_x = ic[0];
-  for (let i = 0; i < 8; i++) {
-    s_x = modR(s_x + ic[i + 1] * modR(v[i]));
-  }
-
-  const a = opts.a ?? 7n;
-  const b = opts.b ?? 11n;
-
-  const rhs_no_c = modR(alpha * beta + gamma * s_x);
-  const target = modR(a * b - rhs_no_c);
-  const c = modR(target * modInverse(delta));
-
-  const aPoint = G1_BASE.multiply(a);
-  const bPoint = G2_BASE.multiply(b);
-  const cPoint = G1_BASE.multiply(c);
-
-  return {
-    a: Buffer.from(aPoint.toRawBytes(true)),
-    b: Buffer.from(bPoint.toRawBytes(true)),
-    c: Buffer.from(cPoint.toRawBytes(true)),
-    aScalar: a,
-    bScalar: b,
-    cScalar: c,
-  };
 }
 
 // ---------------------------------------------------------------------
