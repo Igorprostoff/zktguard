@@ -5,11 +5,44 @@ import {
   Contract,
   contractAddress,
   ContractProvider,
+  Dictionary,
   Sender,
   SendMode,
 } from "@ton/core";
 
-export const GROTH16_OP_VERIFY_CLAIM = 0x76657266;
+export const GROTH16_OP_VERIFY_CLAIM   = 0x76657266;
+export const GROTH16_OP_QUERY_REPLY    = 0x7172706c;
+export const GROTH16_OP_SWEEP_EXPIRED  = 0x73776570;
+export const GROTH16_OP_SET_REGISTRY   = 0x73726567;
+export const GROTH16_OP_SET_COLLECTION = 0x73636f6c;
+export const GROTH16_OP_SET_ADMIN      = 0x7361646d;
+
+export interface VerifierConfig {
+  admin: Address;
+  /** Address of the AppRegistry. Pass an addr_none-like value to
+   *  defer; admin can later send `op::set_registry`. */
+  registry?: Address | null;
+  /** Address of the SoulboundCollection. Same deferral semantics. */
+  collection?: Address | null;
+}
+
+function maybeStoreAddress(b: ReturnType<typeof beginCell>, a: Address | null | undefined) {
+  if (a) {
+    return b.storeAddress(a);
+  }
+  return b.storeUint(0, 2); // addr_none
+}
+
+export function verifierConfigToCell(c: VerifierConfig): Cell {
+  let b = beginCell().storeAddress(c.admin);
+  b = maybeStoreAddress(b, c.registry ?? null);
+  b = maybeStoreAddress(b, c.collection ?? null);
+  return b
+    .storeDict(Dictionary.empty(Dictionary.Keys.BigUint(256), Dictionary.Values.Cell()))
+    .storeDict(Dictionary.empty(Dictionary.Keys.BigUint(64), Dictionary.Values.Cell()))
+    .storeUint(1n, 64) // next_query_id
+    .endCell();
+}
 
 // ---------------------------------------------------------------------
 // Public input encoding (8 × 256-bit scalars, snake of 3 + 3 + 2 cells)
@@ -115,8 +148,12 @@ export class Groth16Verifier implements Contract {
     return new Groth16Verifier(address);
   }
 
-  static createFromConfig(code: Cell, workchain = 0): Groth16Verifier {
-    const data = beginCell().endCell();
+  static createFromConfig(
+    config: VerifierConfig,
+    code: Cell,
+    workchain = 0,
+  ): Groth16Verifier {
+    const data = verifierConfigToCell(config);
     const init = { code, data };
     return new Groth16Verifier(contractAddress(workchain, init), init);
   }
@@ -179,5 +216,85 @@ export class Groth16Verifier implements Contract {
   async getChainId(provider: ContractProvider): Promise<bigint> {
     const { stack } = await provider.get("chain_id", []);
     return stack.readBigNumber();
+  }
+
+  async getRegistryAddress(provider: ContractProvider): Promise<Address | null> {
+    const { stack } = await provider.get("registry_address", []);
+    try {
+      return stack.readAddress();
+    } catch {
+      return null;
+    }
+  }
+
+  async getCollectionAddress(provider: ContractProvider): Promise<Address | null> {
+    const { stack } = await provider.get("collection_address", []);
+    try {
+      return stack.readAddress();
+    } catch {
+      return null;
+    }
+  }
+
+  async getNextQueryId(provider: ContractProvider): Promise<bigint> {
+    const { stack } = await provider.get("next_query_id", []);
+    return stack.readBigNumber();
+  }
+
+  async getIsParked(provider: ContractProvider, queryId: bigint): Promise<boolean> {
+    const { stack } = await provider.get("parked_entry", [
+      { type: "int", value: queryId },
+    ]);
+    return stack.readNumber() !== 0;
+  }
+
+  async sendSetRegistry(
+    provider: ContractProvider,
+    via: Sender,
+    opts: { value: bigint; queryId: bigint; address: Address },
+  ): Promise<void> {
+    const body = beginCell()
+      .storeUint(GROTH16_OP_SET_REGISTRY, 32)
+      .storeUint(opts.queryId, 64)
+      .storeAddress(opts.address)
+      .endCell();
+    await provider.internal(via, {
+      value: opts.value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY,
+      body,
+    });
+  }
+
+  async sendSetCollection(
+    provider: ContractProvider,
+    via: Sender,
+    opts: { value: bigint; queryId: bigint; address: Address },
+  ): Promise<void> {
+    const body = beginCell()
+      .storeUint(GROTH16_OP_SET_COLLECTION, 32)
+      .storeUint(opts.queryId, 64)
+      .storeAddress(opts.address)
+      .endCell();
+    await provider.internal(via, {
+      value: opts.value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY,
+      body,
+    });
+  }
+
+  async sendSweepExpired(
+    provider: ContractProvider,
+    via: Sender,
+    opts: { value: bigint; queryId: bigint },
+  ): Promise<void> {
+    const body = beginCell()
+      .storeUint(GROTH16_OP_SWEEP_EXPIRED, 32)
+      .storeUint(opts.queryId, 64)
+      .endCell();
+    await provider.internal(via, {
+      value: opts.value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY,
+      body,
+    });
   }
 }

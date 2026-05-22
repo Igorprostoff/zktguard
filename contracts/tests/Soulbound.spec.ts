@@ -175,4 +175,52 @@ describe("Soulbound credential (Collection + Item)", () => {
     expect(COLLECTION_OP_MINT).toBe(0x6d696e74);
     expect(ITEM_OP_TRANSFER).toBe(0x5fcc3d14);
   });
+
+  it("rotates the verifier address via op::set_verifier (owner only)", async () => {
+    const newVerifier = await blockchain.treasury("new_verifier");
+
+    // Non-owner cannot rotate.
+    const intruderTry = await collection.sendSetVerifier(intruder.getSender(), {
+      value: toNano("0.05"),
+      queryId: 1n,
+      newVerifier: newVerifier.address,
+    });
+    const ix = intruderTry.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === collection.address.toString(),
+    );
+    expect((ix as any).description?.computePhase?.exitCode).toBe(415);
+
+    // Owner can rotate.
+    await collection.sendSetVerifier(deployer.getSender(), {
+      value: toNano("0.05"),
+      queryId: 2n,
+      newVerifier: newVerifier.address,
+    });
+    expect((await collection.getVerifierAddress()).toString()).toBe(
+      newVerifier.address.toString(),
+    );
+
+    // Old verifier can no longer mint; new one can.
+    const oldR = await collection.sendMint(verifier.getSender(), {
+      value: toNano("0.2"),
+      queryId: 3n,
+      newOwner: user.address,
+      content: sampleContent(),
+    });
+    const oldTx = oldR.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === collection.address.toString(),
+    );
+    expect((oldTx as any).description?.computePhase?.exitCode).toBe(411);
+    const newR = await collection.sendMint(newVerifier.getSender(), {
+      value: toNano("0.2"),
+      queryId: 4n,
+      newOwner: user.address,
+      content: sampleContent(),
+    });
+    expect(newR.transactions).toHaveTransaction({
+      from: newVerifier.address,
+      to: collection.address,
+      success: true,
+    });
+  });
 });

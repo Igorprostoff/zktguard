@@ -51,6 +51,14 @@ Order matches the `public []` directive in
 | 6     | `attestor_pubkey_y`| BabyJubjub coords of the attestor                  |
 | 7     | `threshold_months` | Account age must exceed `threshold_months × 30d`   |
 
+## Phase B design: ChaCha20-Poly1305 in the circuit
+
+The v0.2 Phase B work replaces the v0.1 AEAD stubs with a real
+in-circuit ChaCha20-Poly1305 decryption. The full design — quarter-round
+arithmetic, five-limb Poly1305 accumulator, AEAD glue per RFC 8439,
+and the constraint-count budget — lives in
+[`paper/design/chacha20-circuit.md`](https://github.com/Igorprostoff/zktguard/blob/main/paper/design/chacha20-circuit.md).
+
 ## Constraint groups inside the circuit
 
 1. **AEADDecrypt** — `decrypt(ciphertext, key, iv) == plaintext`. Stubbed in v0.1; real bodies land alongside Task 3.

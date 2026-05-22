@@ -152,13 +152,29 @@ Part C originally specifies. BLS verification inside a Groth16/bn128
 circuit costs millions of constraints; BabyJubjub clocks in around
 four thousand.
 
-The verifier hard-codes acceptance of \texttt{(app\_id, claim\_type) =
-(1, 1)} in v0.1. Cross-contract send to the App Registry is the
-natural follow-up.
+The v0.2 release wires the cross-contract async flow: the verifier
+parks an accepted proof, sends a query to the App Registry, and
+completes the soulbound-credential mint on a positive reply. The
+nullifier is recorded only after the reply lands, so a race-free
+window for registry mutation is preserved.
 
-The Powers-of-Tau choice is documented but no Phase-2 contribution
-has been performed in v0.1. v0.1 runs against a stub server rather
-than real Telegram traffic.
+The Powers-of-Tau choice is documented but no multi-party Phase-2
+contribution has been performed; v0.2 ships a deterministic local
+contribution. v0.2 still runs against a stub server rather than real
+Telegram traffic.
+
+\section{ChaCha20-Poly1305 in the v0.2 Phase B circuit}\label{sec:chacha}
+
+Phase B replaces the v0.1 AEAD stubs with a real
+ChaCha20-Poly1305 decryption check inside the circuit. The full
+design --- quarter-round arithmetic, the five-limb Poly1305
+accumulator, the AEAD composition per RFC 8439, and the
+constraint-count budget --- lives in
+\texttt{paper/design/chacha20-circuit.md}, kept separate from this
+manuscript so it can iterate independently. The cipher-suite
+constraint forces the attestor to negotiate ChaCha20-Poly1305 with
+the upstream endpoint; AES-GCM TLS sessions are not provable in this
+construction.
 
 \section{Future work}\label{sec:future}
 

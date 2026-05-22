@@ -12,7 +12,8 @@ import {
 
 import { buildItemData, IndividualContent, buildIndividualContent } from "./SoulboundItem";
 
-export const COLLECTION_OP_MINT = 0x6d696e74;
+export const COLLECTION_OP_MINT         = 0x6d696e74;
+export const COLLECTION_OP_SET_VERIFIER = 0x73766572;
 
 export interface CollectionConfig {
   verifier: Address;
@@ -96,6 +97,23 @@ export class SoulboundCollection implements Contract {
       .storeUint(opts.queryId, 64)
       .storeAddress(opts.newOwner)
       .storeRef(contentCell)
+      .endCell();
+    await provider.internal(via, {
+      value: opts.value,
+      sendMode: SendMode.PAY_GAS_SEPARATELY,
+      body,
+    });
+  }
+
+  async sendSetVerifier(
+    provider: ContractProvider,
+    via: Sender,
+    opts: { value: bigint; queryId: bigint; newVerifier: Address },
+  ): Promise<void> {
+    const body = beginCell()
+      .storeUint(COLLECTION_OP_SET_VERIFIER, 32)
+      .storeUint(opts.queryId, 64)
+      .storeAddress(opts.newVerifier)
       .endCell();
     await provider.internal(via, {
       value: opts.value,

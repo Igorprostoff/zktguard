@@ -3,21 +3,26 @@
 ;; ===========================================================
 ;; Groth16 verifier on TON for zkTGuard v0.2.
 ;;
-;; The VK below is the REAL output of a deterministic Phase-2
-;; contribution against a Phase-A research-grade local Powers of
-;; Tau (capacity 2^14, curve BLS12-381). Reproduced by running
-;; circuits/scripts/setup.sh. Replace this block by running
-;; circuits/scripts/vk_to_func.js and pasting the output.
+;; Phase A: real BLS12-381 VK baked in from
+;;   circuits/account_age/verification_key.json. Regenerate by running
+;;   circuits/scripts/setup.sh then circuits/scripts/vk_to_func.js.
 ;;
-;; v0.2 still ships an unaudited research artifact: mainnet
-;; deployment requires participation in a multi-party Phase-2
-;; ceremony, which is intentionally out of scope here.
+;; Phase C: the verifier no longer mints synchronously. The flow is
 ;;
-;; Public-input vector (8 scalars) in the order circom emits them
-;; for the v0.2 account_age circuit. nullifier is a circuit OUTPUT
-;; so it comes first; the remaining seven follow the order of the
-;; `public []` directive.
+;;   1. `op::verify_claim` arrives.
+;;   2. Validate point arity, group membership, chain_id, expiration,
+;;      and the four-pair Groth16 equation. Reject with the usual
+;;      401–413 exit codes on failure.
+;;   3. Park the proof under a fresh query_id and send
+;;      `op::query_registered` to the configured registry.
+;;   4. `op::query_reply` arrives from the registry.
+;;   5. If the registry says yes, check nullifier reuse (402), record
+;;      the nullifier, and send `op::mint` to the configured soulbound
+;;      collection. If the registry says no, drop the parked entry.
+;;   6. `op::sweep_expired` (admin) clears parked entries past their
+;;      TTL.
 ;;
+;; Public-input vector (8 scalars, BLS12-381 scalar field):
 ;;     pi[0]  = nullifier      (circuit output)
 ;;     pi[1]  = nonce          (high 32 bits carry chain_id)
 ;;     pi[2]  = app_id
@@ -28,35 +33,51 @@
 ;;     pi[7]  = threshold_months
 ;; ===========================================================
 
+int equal_slices(slice a, slice b) asm "SDEQ";
+
 ;; ---------- Op codes ----------
 
-const int op::verify_claim = 0x76657266;   ;; "verf"
+const int op::verify_claim     = 0x76657266;   ;; "verf"
+const int op::query_registered = 0x71726567;   ;; matches AppRegistry
+const int op::query_reply      = 0x7172706c;
+const int op::mint             = 0x6d696e74;   ;; matches SoulboundCollection
+const int op::sweep_expired    = 0x73776570;   ;; "swep"
+const int op::set_registry     = 0x73726567;   ;; "sreg"
+const int op::set_collection   = 0x73636f6c;   ;; "scol"
+const int op::set_admin        = 0x7361646d;   ;; "sadm"
 
 ;; ---------- Error codes (see ERRORS.md) ----------
 
 const int err::invalid_proof       = 401;
 const int err::nullifier_used      = 402;
 const int err::expired             = 403;
-const int err::unknown_app         = 404;
 const int err::chain_mismatch      = 405;
 const int err::malformed_input     = 411;
 const int err::not_on_curve_g1     = 412;
 const int err::not_on_curve_g2     = 413;
+const int err::not_registry        = 430;
+const int err::unknown_query_id    = 431;
+const int err::not_admin           = 432;
+const int err::registry_unset      = 433;
+const int err::collection_unset    = 434;
 const int err::unknown_op          = 0xffff;
 
 ;; ---------- Constants ----------
-;; Chain identifier baked into the high 32 bits of the public
-;; nonce by the prover. v0 uses 1 for testnet sandbox tests.
 
-const int CHAIN_ID         = 1;
-const int ACCEPTED_APP_ID  = 1;     ;; v0 stub for registry lookup
-const int ACCEPTED_CLAIM   = 1;
+const int CHAIN_ID         = 1;     ;; testnet binding
 
 const int G1_BITS = 48 * 8;
 const int G2_BITS = 96 * 8;
 const int SCALAR_BITS = 256;
 const int CHAIN_ID_BITS = 32;
 const int NONCE_RANDOM_BITS = SCALAR_BITS - CHAIN_ID_BITS;
+const int QUERY_ID_BITS = 64;
+const int APP_ID_BITS = 64;
+const int CLAIM_BITS = 32;
+const int EXPIRATION_BITS = 64;
+const int TIMESTAMP_BITS = 32;
+const int TTL_BITS = 32;
+const int DEFAULT_TTL_SECONDS = 3600;     ;; 1 hour
 
 ;; ---------- BLS asm bindings ----------
 
@@ -64,17 +85,12 @@ slice bls_g1_neg(slice x)         asm "BLS_G1_NEG";
 int   bls_g1_in_group(slice x)    asm "BLS_G1_INGROUP";
 int   bls_g2_in_group(slice x)    asm "BLS_G2_INGROUP";
 
-;; Four-pair pairing: e(g1a,g2a) * e(g1b,g2b) * e(g1c,g2c) * e(g1d,g2d) == 1?
 int bls_pairing_4(
     slice g1a, slice g2a,
     slice g1b, slice g2b,
     slice g1c, slice g2c,
     slice g1d, slice g2d
 ) asm "4 PUSHINT BLS_PAIRING";
-
-;; FunC's asm directive caps argument count at 16, so the 9-term
-;; multiexp needed for vk_x is split into a 4-term and a 5-term
-;; call combined by BLS_G1_ADD.
 
 slice bls_g1_add(slice x, slice y) asm "BLS_G1_ADD";
 
@@ -89,12 +105,8 @@ slice bls_g1_multiexp_5(
 ) asm "5 PUSHINT BLS_G1_MULTIEXP";
 
 ;; ===========================================================
-;; Verification key constants (PLACEHOLDER — see header).
+;; Verification key constants (real Phase-A output)
 ;; ===========================================================
-
-;; generated by circuits/scripts/vk_to_func.js from
-;; circuits/account_age/verification_key.json. Do not edit by hand;
-;; rerun the script after any trusted-setup re-run.
 
 slice vk_alpha_g1() inline {
     return begin_cell()
@@ -196,21 +208,43 @@ slice vk_ic_8() inline {
 ;; ===========================================================
 ;; Storage:
 ;;
-;;     nullifiers_dict : HashmapE(256 → cell)  — used nullifiers
+;;     admin       : MsgAddress
+;;     registry    : MsgAddress (may be addr_none until set)
+;;     collection  : MsgAddress (may be addr_none until set)
+;;     ref nullifiers_dict : HashmapE(256 → empty)
+;;     ref parked_dict     : HashmapE(QUERY_ID_BITS → parked-cell)
+;;     next_query_id : uint64
 ;;
-;; The dict value cells are empty; only presence matters.
+;; A "parked-cell" holds:
+;;     nullifier  : 256 bits
+;;     app_id     : 64 bits
+;;     claim_type : 32 bits
+;;     expiration : 64 bits
+;;     parked_at  : 32 bits (Unix seconds)
+;;     ttl        : 32 bits
+;;     original_sender : MsgAddress
 ;; ===========================================================
 
-(cell) load_dict_storage() inline {
+(slice, slice, slice, cell, cell, int) load_data() inline {
     slice ds = get_data().begin_parse();
-    if (ds.slice_empty?()) {
-        return new_dict();
-    }
-    return ds~load_dict();
+    slice admin = ds~load_msg_addr();
+    slice registry = ds~load_msg_addr();
+    slice collection = ds~load_msg_addr();
+    cell nullifiers = ds~load_dict();
+    cell parked = ds~load_dict();
+    int next_qid = ds~load_uint(QUERY_ID_BITS);
+    return (admin, registry, collection, nullifiers, parked, next_qid);
 }
 
-() save_dict_storage(cell d) impure inline {
-    set_data(begin_cell().store_dict(d).end_cell());
+() save_data(slice admin, slice registry, slice collection, cell nullifiers, cell parked, int next_qid) impure inline {
+    set_data(begin_cell()
+        .store_slice(admin)
+        .store_slice(registry)
+        .store_slice(collection)
+        .store_dict(nullifiers)
+        .store_dict(parked)
+        .store_uint(next_qid, QUERY_ID_BITS)
+        .end_cell());
 }
 
 ;; ---------- Helpers ----------
@@ -223,13 +257,9 @@ slice load_point_slice(cell c, int expected_bits) inline {
 }
 
 int chain_id_from_nonce(int nonce) inline {
-    ;; High 32 bits of the 256-bit nonce carry the chain_id.
     return nonce >> NONCE_RANDOM_BITS;
 }
 
-;; Reads exactly 8 × 256-bit public inputs from a head cell using
-;; the snake layout (3 + 3 + 2). Returns them as a tuple of ints
-;; in declaration order.
 (int, int, int, int, int, int, int, int) parse_public_inputs(cell head) inline {
     slice s0 = head.begin_parse();
     int pi0 = s0~load_uint(SCALAR_BITS);
@@ -250,10 +280,6 @@ int chain_id_from_nonce(int nonce) inline {
     return (pi0, pi1, pi2, pi3, pi4, pi5, pi6, pi7);
 }
 
-;; Performs the four-pair Groth16 check:
-;;   e(A, B) * e(-α, β) * e(-vk_x, γ) * e(-C, δ) == 1
-;; Returns 1 (verified) or 0 (rejected). Normalised from TVM's
-;; -1/0 boolean convention.
 int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
     slice neg_alpha = bls_g1_neg(vk_alpha_g1());
     slice neg_vk_x  = bls_g1_neg(vk_x);
@@ -268,6 +294,70 @@ int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
     return 0;
 }
 
+int is_addr_none(slice addr) inline {
+    ;; addr_none has tag 00 in the first two bits. A short slice with
+    ;; only those two bits and nothing else is the canonical none.
+    return addr.slice_bits() <= 2;
+}
+
+cell build_parked_entry(int nullifier, int app_id, int claim_type, int expiration, int parked_at, int ttl, slice sender) inline {
+    return begin_cell()
+        .store_uint(nullifier, SCALAR_BITS)
+        .store_uint(app_id, APP_ID_BITS)
+        .store_uint(claim_type, CLAIM_BITS)
+        .store_uint(expiration, EXPIRATION_BITS)
+        .store_uint(parked_at, TIMESTAMP_BITS)
+        .store_uint(ttl, TTL_BITS)
+        .store_slice(sender)
+        .end_cell();
+}
+
+(int, int, int, int, int, int, slice) parse_parked_entry(slice s) inline {
+    int nullifier = s~load_uint(SCALAR_BITS);
+    int app_id = s~load_uint(APP_ID_BITS);
+    int claim_type = s~load_uint(CLAIM_BITS);
+    int expiration = s~load_uint(EXPIRATION_BITS);
+    int parked_at = s~load_uint(TIMESTAMP_BITS);
+    int ttl = s~load_uint(TTL_BITS);
+    slice sender = s~load_msg_addr();
+    return (nullifier, app_id, claim_type, expiration, parked_at, ttl, sender);
+}
+
+() send_registry_query(slice registry, int query_id, int app_id, int claim_type) impure inline {
+    var msg = begin_cell()
+        .store_uint(0x18, 6)                  ;; bounce off, internal
+        .store_slice(registry)
+        .store_coins(50000000)                ;; 0.05 TON for gas + reply
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(op::query_registered, 32)
+        .store_uint(query_id, QUERY_ID_BITS)
+        .store_uint(app_id, APP_ID_BITS)
+        .store_uint(claim_type, CLAIM_BITS)
+        .end_cell();
+    send_raw_message(msg, 1);                  ;; mode 1: pay fees separately
+}
+
+() send_collection_mint(slice collection, int query_id, slice new_owner, int app_id, int claim_type, int expiration, int nullifier) impure inline {
+    cell content = begin_cell()
+        .store_uint(app_id, 64)
+        .store_uint(claim_type, 64)
+        .store_uint(expiration, 64)
+        .store_uint(nullifier, 256)
+        .store_uint(now(), 64)
+        .end_cell();
+    var msg = begin_cell()
+        .store_uint(0x18, 6)
+        .store_slice(collection)
+        .store_coins(100000000)                ;; 0.1 TON
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(op::mint, 32)
+        .store_uint(query_id, QUERY_ID_BITS)
+        .store_slice(new_owner)
+        .store_ref(content)
+        .end_cell();
+    send_raw_message(msg, 1);
+}
+
 ;; ===========================================================
 ;; Entry point
 ;; ===========================================================
@@ -278,12 +368,16 @@ int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
     }
     slice cs = in_msg_full.begin_parse();
     int flags = cs~load_uint(4);
-    if (flags & 1) { return (); }  ;; ignore bounced
+    if (flags & 1) { return (); }
+    slice sender = cs~load_msg_addr();
 
     int op = in_msg_body~load_uint(32);
     int query_id = in_msg_body~load_uint(64);
 
+    var (admin, registry, collection, nullifiers, parked, next_qid) = load_data();
+
     if (op == op::verify_claim) {
+        ;; Body refs: A, B, C, public-inputs head.
         cell c_a  = in_msg_body~load_ref();
         cell c_b  = in_msg_body~load_ref();
         cell c_c  = in_msg_body~load_ref();
@@ -298,36 +392,20 @@ int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
         throw_unless(err::not_on_curve_g1, bls_g1_in_group(c));
 
         var (pi0, pi1, pi2, pi3, pi4, pi5, pi6, pi7) = parse_public_inputs(c_pi);
-        ;; v0.2 public-input layout (output-first, matching circom's
-        ;; emission order for `signal output nullifier`):
-        ;;   pi0 = nullifier (output)
-        ;;   pi1 = nonce
-        ;;   pi2 = app_id
-        ;;   pi3 = expiration
-        ;;   pi4 = claim_type
-        ;;   pi5 = attestor_pubkey_x
-        ;;   pi6 = attestor_pubkey_y
-        ;;   pi7 = threshold_months
+        ;; pi0=nullifier, pi1=nonce, pi2=app_id, pi3=expiration,
+        ;; pi4=claim_type, pi5=attestor_x, pi6=attestor_y, pi7=threshold
 
-        ;; (1) Chain ID — extract from nonce high bits.
+        ;; Cheap pre-checks (do these before the expensive pairing).
         int chain_id = chain_id_from_nonce(pi1);
         throw_unless(err::chain_mismatch, chain_id == CHAIN_ID);
-
-        ;; (2) Expiry.
         throw_if(err::expired, now() > pi3);
 
-        ;; (3) Registry stub: hard-coded acceptance pair for v0.
-        throw_unless(err::unknown_app,
-            (pi2 == ACCEPTED_APP_ID) & (pi4 == ACCEPTED_CLAIM));
+        ;; Configuration sanity — refuse to park if registry / collection
+        ;; are unset.
+        throw_if(err::registry_unset, is_addr_none(registry));
+        throw_if(err::collection_unset, is_addr_none(collection));
 
-        ;; (4) Nullifier replay protection — pre-check.
-        cell nullifiers = load_dict_storage();
-        var (_, found) = nullifiers.udict_get?(SCALAR_BITS, pi0);
-        throw_if(err::nullifier_used, found);
-
-        ;; (5) Compute vk_x = IC[0] + Σ pi_i · IC[i+1]. Two multiexps
-        ;; (4 + 5 terms) joined with BLS_G1_ADD, since FunC asm
-        ;; functions are capped at 16 arguments.
+        ;; vk_x = IC[0] + Σ pi_i · IC[i+1]  (split as 4 + 5 terms).
         slice part_a = bls_g1_multiexp_4(
             vk_ic_0(), 1,
             vk_ic_1(), pi0,
@@ -342,15 +420,93 @@ int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
             vk_ic_8(), pi7
         );
         slice vk_x = bls_g1_add(part_a, part_b);
-
-        ;; (6) Groth16 pairing equation.
         int ok = verify_groth16(a, b, c, vk_x);
         throw_unless(err::invalid_proof, ok);
 
-        ;; (7) Insert nullifier and persist.
-        nullifiers~udict_set_builder(SCALAR_BITS, pi0, begin_cell());
-        save_dict_storage(nullifiers);
+        ;; Park the proof and send the registry query.
+        int my_qid = next_qid;
+        cell entry = build_parked_entry(pi0, pi2, pi4, pi3, now(), DEFAULT_TTL_SECONDS, sender);
+        parked~udict_set_ref(QUERY_ID_BITS, my_qid, entry);
+        save_data(admin, registry, collection, nullifiers, parked, my_qid + 1);
 
+        send_registry_query(registry, my_qid, pi2, pi4);
+        return ();
+    }
+
+    if (op == op::query_reply) {
+        ;; Must come from the registry.
+        throw_unless(err::not_registry, equal_slices(sender, registry));
+
+        int app_id_reply = in_msg_body~load_uint(APP_ID_BITS);
+        int claim_reply  = in_msg_body~load_uint(CLAIM_BITS);
+        int is_reg       = in_msg_body~load_uint(1);
+
+        var (entry_cell, found) = parked.udict_get_ref?(QUERY_ID_BITS, query_id);
+        throw_unless(err::unknown_query_id, found);
+
+        slice es = entry_cell.begin_parse();
+        var (nullifier, p_app, p_claim, p_exp, _parked_at, _ttl, original_sender) = parse_parked_entry(es);
+
+        ;; Sanity: the registry's reply must be about the same pair.
+        throw_unless(err::unknown_query_id,
+            (p_app == app_id_reply) & (p_claim == claim_reply));
+
+        ;; Drop the parked entry either way.
+        parked~udict_delete?(QUERY_ID_BITS, query_id);
+
+        if (is_reg == 0) {
+            ;; Registry says no — silently discard. The original
+            ;; sender will observe the absence of a credential mint.
+            save_data(admin, registry, collection, nullifiers, parked, next_qid);
+            return ();
+        }
+
+        ;; Registry says yes. Re-run nullifier and expiration checks
+        ;; (state can have moved during the round-trip).
+        throw_if(err::expired, now() > p_exp);
+        var (_, used) = nullifiers.udict_get?(SCALAR_BITS, nullifier);
+        throw_if(err::nullifier_used, used);
+
+        nullifiers~udict_set_builder(SCALAR_BITS, nullifier, begin_cell());
+        save_data(admin, registry, collection, nullifiers, parked, next_qid);
+
+        send_collection_mint(collection, query_id, original_sender, p_app, p_claim, p_exp, nullifier);
+        return ();
+    }
+
+    if (op == op::sweep_expired) {
+        throw_unless(err::not_admin, equal_slices(sender, admin));
+        ;; The caller passes a query_id; if expired we drop it.
+        var (entry_cell, found) = parked.udict_get_ref?(QUERY_ID_BITS, query_id);
+        if (found) {
+            slice es = entry_cell.begin_parse();
+            var (_, _, _, _, parked_at, ttl, _) = parse_parked_entry(es);
+            if (now() > parked_at + ttl) {
+                parked~udict_delete?(QUERY_ID_BITS, query_id);
+                save_data(admin, registry, collection, nullifiers, parked, next_qid);
+            }
+        }
+        return ();
+    }
+
+    if (op == op::set_registry) {
+        throw_unless(err::not_admin, equal_slices(sender, admin));
+        slice new_registry = in_msg_body~load_msg_addr();
+        save_data(admin, new_registry, collection, nullifiers, parked, next_qid);
+        return ();
+    }
+
+    if (op == op::set_collection) {
+        throw_unless(err::not_admin, equal_slices(sender, admin));
+        slice new_collection = in_msg_body~load_msg_addr();
+        save_data(admin, registry, new_collection, nullifiers, parked, next_qid);
+        return ();
+    }
+
+    if (op == op::set_admin) {
+        throw_unless(err::not_admin, equal_slices(sender, admin));
+        slice new_admin = in_msg_body~load_msg_addr();
+        save_data(new_admin, registry, collection, nullifiers, parked, next_qid);
         return ();
     }
 
@@ -362,8 +518,8 @@ int verify_groth16(slice a, slice b, slice c, slice vk_x) inline {
 ;; ===========================================================
 
 int nullifier_used?(int nf) method_id {
-    cell d = load_dict_storage();
-    var (_, found) = d.udict_get?(SCALAR_BITS, nf);
+    var (_, _, _, nullifiers, _, _) = load_data();
+    var (_, found) = nullifiers.udict_get?(SCALAR_BITS, nf);
     if (found) { return 1; }
     return 0;
 }
@@ -372,10 +528,24 @@ int chain_id() method_id {
     return CHAIN_ID;
 }
 
-int accepted_app_id() method_id {
-    return ACCEPTED_APP_ID;
+(int, slice) parked_entry(int q) method_id {
+    var (_, _, _, _, parked, _) = load_data();
+    var (cellopt, found) = parked.udict_get_ref?(QUERY_ID_BITS, q);
+    if (~ found) { return (0, null()); }
+    return (1, cellopt.begin_parse());
 }
 
-int accepted_claim_type() method_id {
-    return ACCEPTED_CLAIM;
+slice registry_address() method_id {
+    var (_, registry, _, _, _, _) = load_data();
+    return registry;
+}
+
+slice collection_address() method_id {
+    var (_, _, collection, _, _, _) = load_data();
+    return collection;
+}
+
+int next_query_id() method_id {
+    var (_, _, _, _, _, next_qid) = load_data();
+    return next_qid;
 }

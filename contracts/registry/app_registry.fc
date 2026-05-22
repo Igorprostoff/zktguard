@@ -1,28 +1,30 @@
 #include "../imports/stdlib.fc";
 
 ;; ============================================================
-;; App registry (zkTGuard v0.1)
+;; App registry (zkTGuard v0.2 Phase C)
 ;;
 ;; Canonical on-chain directory of (app_id, claim_type) pairs that
-;; the verifier will accept. v0 keeps the storage flat — pairs are
-;; packed into a single 96-bit dict key
+;; the verifier will accept. Storage is flat — pairs are packed into
+;; a single 96-bit dict key
 ;;
 ;;     key = (app_id << 32) | claim_type
 ;;
 ;; with empty value cells (presence is the data). app_id is 64 bits,
 ;; claim_type is 32 bits.
 ;;
-;; The verifier in Task 4 currently hard-codes the acceptance pair
-;; (1, 1). Wiring its check through this registry — via either an
-;; admin-pushed snapshot or a deferred-reply pattern — is the
-;; follow-up tracked in DEPLOYMENTS.md.
+;; Phase C adds `op::query_registered`: any contract can ask the
+;; registry whether a pair is present; the registry replies via
+;; `op::query_reply` to the original sender. The verifier uses this
+;; for its async parking flow.
 ;; ============================================================
 
 int equal_slices(slice a, slice b) asm "SDEQ";
 
-const int op::register        = 0x72656769;   ;; "regi"
-const int op::deregister      = 0x64657265;   ;; "dere"
-const int op::transfer_admin  = 0x61646d6e;   ;; "admn"
+const int op::register         = 0x72656769;   ;; "regi"
+const int op::deregister       = 0x64657265;   ;; "dere"
+const int op::transfer_admin   = 0x61646d6e;   ;; "admn"
+const int op::query_registered = 0x71726567;   ;; "qreg"
+const int op::query_reply      = 0x7172706c;   ;; "qrpl"
 
 const int err::not_admin      = 420;
 const int err::unknown_op     = 0xffff;
@@ -51,6 +53,28 @@ int pack_key(int app_id, int claim_type) inline {
     return (app_id << CLAIM_BITS) | claim_type;
 }
 
+int lookup(cell apps, int app_id, int claim_type) inline {
+    int key = pack_key(app_id, claim_type);
+    var (_, found) = apps.udict_get?(KEY_BITS, key);
+    if (found) { return 1; }
+    return 0;
+}
+
+() send_reply(slice dest, int query_id, int app_id, int claim_type, int is_reg) impure inline {
+    var msg = begin_cell()
+        .store_uint(0x10, 6)                 ;; nobounce internal
+        .store_slice(dest)
+        .store_coins(0)
+        .store_uint(0, 1 + 4 + 4 + 64 + 32 + 1 + 1)
+        .store_uint(op::query_reply, 32)
+        .store_uint(query_id, 64)
+        .store_uint(app_id, APP_ID_BITS)
+        .store_uint(claim_type, CLAIM_BITS)
+        .store_uint(is_reg, 1)
+        .end_cell();
+    send_raw_message(msg, 64);   ;; carry remaining value of the request
+}
+
 ;; ---------- Entry point ----------
 
 () recv_internal(int my_balance, int msg_value, cell in_msg_full, slice in_msg_body) impure {
@@ -66,6 +90,16 @@ int pack_key(int app_id, int claim_type) inline {
     int query_id = in_msg_body~load_uint(64);
 
     var (admin, apps) = load_data();
+
+    if (op == op::query_registered) {
+        ;; Public — anyone may ask. No admin gate.
+        int app_id = in_msg_body~load_uint(APP_ID_BITS);
+        int claim_type = in_msg_body~load_uint(CLAIM_BITS);
+        int is_reg = lookup(apps, app_id, claim_type);
+        send_reply(sender, query_id, app_id, claim_type, is_reg);
+        return ();
+    }
+
     throw_unless(err::not_admin, equal_slices(sender, admin));
 
     if (op == op::register) {
@@ -99,10 +133,7 @@ int pack_key(int app_id, int claim_type) inline {
 
 int is_registered(int app_id, int claim_type) method_id {
     var (_, apps) = load_data();
-    int key = pack_key(app_id, claim_type);
-    var (_, found) = apps.udict_get?(KEY_BITS, key);
-    if (found) { return 1; }
-    return 0;
+    return lookup(apps, app_id, claim_type);
 }
 
 slice admin_address() method_id {

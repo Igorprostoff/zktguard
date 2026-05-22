@@ -10,9 +10,11 @@ import {
   SendMode,
 } from "@ton/core";
 
-export const REGISTRY_OP_REGISTER = 0x72656769;
-export const REGISTRY_OP_DEREGISTER = 0x64657265;
-export const REGISTRY_OP_TRANSFER_ADMIN = 0x61646d6e;
+export const REGISTRY_OP_REGISTER         = 0x72656769;
+export const REGISTRY_OP_DEREGISTER       = 0x64657265;
+export const REGISTRY_OP_TRANSFER_ADMIN   = 0x61646d6e;
+export const REGISTRY_OP_QUERY_REGISTERED = 0x71726567;
+export const REGISTRY_OP_QUERY_REPLY      = 0x7172706c;
 
 const KEY_BITS = 96;
 const APP_ID_BITS = 64n;

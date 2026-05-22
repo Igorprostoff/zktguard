@@ -3,7 +3,13 @@ import { Cell, toNano } from "@ton/core";
 import { compile } from "@ton/blueprint";
 import "@ton/test-utils";
 
-import { AppRegistry, REGISTRY_OP_REGISTER } from "../wrappers/AppRegistry";
+import { beginCell } from "@ton/core";
+import {
+  AppRegistry,
+  REGISTRY_OP_REGISTER,
+  REGISTRY_OP_QUERY_REGISTERED,
+  REGISTRY_OP_QUERY_REPLY,
+} from "../wrappers/AppRegistry";
 
 describe("AppRegistry", () => {
   let code: Cell;
@@ -125,5 +131,70 @@ describe("AppRegistry", () => {
 
   it("uses the documented op constant for register", () => {
     expect(REGISTRY_OP_REGISTER).toBe(0x72656769);
+  });
+
+  function findOutboundReply(txs: any[], from: any, to: any) {
+    // The reply is the registry's outbound message → intruder.
+    // We locate it by inspecting the registry transaction's outMessages
+    // since the treasury contract on the receiving end re-wraps the body
+    // and would otherwise hide the op code.
+    const regTx = txs.find(
+      (t) => t.inMessage?.info.dest?.toString() === from.address.toString(),
+    );
+    if (!regTx) return null;
+    const outs: any[] = Array.from(regTx.outMessages?.values?.() ?? []);
+    return outs.find(
+      (m) => m.info.dest?.toString() === to.address.toString(),
+    );
+  }
+
+  it("answers op::query_registered with op::query_reply (hit)", async () => {
+    await registry.sendRegister(admin.getSender(), {
+      value: toNano("0.05"),
+      queryId: 1n,
+      appId: 1n,
+      claimType: 1n,
+    });
+    const queryBody = beginCell()
+      .storeUint(REGISTRY_OP_QUERY_REGISTERED, 32)
+      .storeUint(42n, 64)
+      .storeUint(1n, 64)
+      .storeUint(1n, 32)
+      .endCell();
+    const r = await intruder.send({
+      to: registry.address,
+      value: toNano("0.1"),
+      body: queryBody,
+    });
+    const reply = findOutboundReply(r.transactions, registry, intruder);
+    expect(reply).toBeTruthy();
+    const body = reply!.body.beginParse();
+    expect(body.loadUint(32)).toBe(REGISTRY_OP_QUERY_REPLY);
+    expect(body.loadUintBig(64)).toBe(42n);
+    expect(body.loadUintBig(64)).toBe(1n);
+    expect(body.loadUintBig(32)).toBe(1n);
+    expect(body.loadUint(1)).toBe(1);
+  });
+
+  it("answers op::query_registered with is_registered=false on miss", async () => {
+    const queryBody = beginCell()
+      .storeUint(REGISTRY_OP_QUERY_REGISTERED, 32)
+      .storeUint(99n, 64)
+      .storeUint(7n, 64)
+      .storeUint(5n, 32)
+      .endCell();
+    const r = await intruder.send({
+      to: registry.address,
+      value: toNano("0.1"),
+      body: queryBody,
+    });
+    const reply = findOutboundReply(r.transactions, registry, intruder);
+    expect(reply).toBeTruthy();
+    const body = reply!.body.beginParse();
+    expect(body.loadUint(32)).toBe(REGISTRY_OP_QUERY_REPLY);
+    body.loadUintBig(64); // query_id
+    body.loadUintBig(64); // app_id
+    body.loadUintBig(32); // claim_type
+    expect(body.loadUint(1)).toBe(0);
   });
 });

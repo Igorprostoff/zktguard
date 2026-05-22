@@ -6,6 +6,41 @@ follow SemVer.
 
 ## [Unreleased]
 
+### v0.2 Phase C — cross-contract async wiring
+
+The verifier, registry, and soulbound collection now talk to each
+other end-to-end.
+
+- **AppRegistry** gains a public `op::query_registered`; any contract
+  can ask the registry whether a pair is present, and the registry
+  replies with `op::query_reply` to the original sender.
+- **Groth16 verifier** now parks each accepted proof under a fresh
+  query id, sends `op::query_registered` to the registry, and
+  completes the mint on `op::query_reply`. Storage grows to include
+  the parked-proof dictionary, admin / registry / collection addresses,
+  and a `next_query_id` counter.
+- **SoulboundCollection** gains an owner-gated `op::set_verifier` so
+  the admin can rotate the minter address (and exit code 415 for
+  non-owner attempts).
+- New verifier error codes: 430 (reply from non-registry), 431
+  (unknown query_id), 432 (admin-only op from non-admin), 433
+  (registry unset), 434 (collection unset).
+- New verifier ops: `op::query_reply`, `op::sweep_expired`,
+  `op::set_registry`, `op::set_collection`, `op::set_admin`.
+- New integration test in `contracts/tests/asyncFlow.spec.ts` walks
+  the four-message sequence end-to-end and exercises the
+  registry-says-no and invalid-proof branches.
+
+### v0.2 Phase B design — ChaCha20-Poly1305 in the circuit
+
+- Phase B's design document lives at
+  `paper/design/chacha20-circuit.md`. It covers the quarter-round
+  arithmetic, the five-limb Poly1305 accumulator, the AEAD
+  composition per RFC 8439, and an honest constraint-count budget.
+  Implementation lands in a future commit.
+- The paper's Construction section and Docusaurus construction page
+  both link to the design doc.
+
 ### v0.2 Phase A — real trusted setup
 
 The placeholder VK from v0.1 is retired in favour of a real

@@ -8,8 +8,8 @@ import "@ton/test-utils";
 import {
   Groth16Verifier,
   PublicInputs,
-  buildPublicInputsCell,
   GROTH16_OP_VERIFY_CLAIM,
+  GROTH16_OP_QUERY_REPLY,
   packNonce,
 } from "../wrappers/Groth16Verifier";
 
@@ -56,7 +56,22 @@ function fixtureProof() {
   };
 }
 
-describe("Groth16Verifier (v0.2 Phase A, real proof fixture)", () => {
+function buildQueryReply(opts: {
+  queryId: bigint;
+  appId: bigint;
+  claimType: bigint;
+  isRegistered: boolean;
+}): Cell {
+  return beginCell()
+    .storeUint(GROTH16_OP_QUERY_REPLY, 32)
+    .storeUint(opts.queryId, 64)
+    .storeUint(opts.appId, 64)
+    .storeUint(opts.claimType, 32)
+    .storeUint(opts.isRegistered ? 1 : 0, 1)
+    .endCell();
+}
+
+describe("Groth16Verifier (v0.2 Phase C async flow)", () => {
   let code: Cell;
   beforeAll(async () => {
     code = await compile("Groth16Verifier");
@@ -64,13 +79,31 @@ describe("Groth16Verifier (v0.2 Phase A, real proof fixture)", () => {
 
   let blockchain: Blockchain;
   let deployer: SandboxContract<TreasuryContract>;
+  let admin: SandboxContract<TreasuryContract>;
+  let registry: SandboxContract<TreasuryContract>;
+  let collection: SandboxContract<TreasuryContract>;
+  let user: SandboxContract<TreasuryContract>;
   let verifier: SandboxContract<Groth16Verifier>;
 
   beforeEach(async () => {
     blockchain = await Blockchain.create();
     deployer = await blockchain.treasury("deployer");
-    verifier = blockchain.openContract(Groth16Verifier.createFromConfig(code));
-    const r = await verifier.sendDeploy(deployer.getSender(), toNano("0.05"));
+    admin = await blockchain.treasury("admin");
+    registry = await blockchain.treasury("registry_stub");
+    collection = await blockchain.treasury("collection_stub");
+    user = await blockchain.treasury("user");
+
+    verifier = blockchain.openContract(
+      Groth16Verifier.createFromConfig(
+        {
+          admin: admin.address,
+          registry: registry.address,
+          collection: collection.address,
+        },
+        code,
+      ),
+    );
+    const r = await verifier.sendDeploy(deployer.getSender(), toNano("0.5"));
     expect(r.transactions).toHaveTransaction({
       from: deployer.address,
       to: verifier.address,
@@ -79,90 +112,67 @@ describe("Groth16Verifier (v0.2 Phase A, real proof fixture)", () => {
     });
   });
 
-  it("accepts the fixture proof against the real Phase-A VK", async () => {
+  it("parks the proof and sends op::query_registered to the registry", async () => {
     const pi = fixturePublicInputs();
     const proof = fixtureProof();
 
-    const r = await verifier.sendVerifyClaim(deployer.getSender(), {
+    const r = await verifier.sendVerifyClaim(user.getSender(), {
       value: toNano("0.5"),
-      queryId: 1n,
+      queryId: 99n,
       proof,
       publicInputs: pi,
     });
 
-    const tx = r.transactions.find(
+    const verifyTx = r.transactions.find(
       (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
     );
-    expect(tx).toBeDefined();
-    expect((tx as any).description?.computePhase?.success).toBe(true);
-    expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(true);
+    expect((verifyTx as any).description?.computePhase?.success).toBe(true);
+
+    // The verifier should have queued an outbound message to the
+    // registry with op::query_registered.
+    const out = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === registry.address.toString(),
+    );
+    expect(out).toBeDefined();
+
+    expect(await verifier.getIsParked(1n)).toBe(true);
+    expect(await verifier.getNextQueryId()).toBe(2n);
+    // nullifier must NOT be recorded yet — happens on reply.
+    expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(false);
 
     // eslint-disable-next-line no-console
     console.log(
-      "[gas] verify (accept):",
-      (tx as any).description?.computePhase?.gasUsed?.toString?.() ?? "n/a",
+      "[gas] verify+park:",
+      (verifyTx as any).description?.computePhase?.gasUsed?.toString?.() ?? "n/a",
     );
   });
 
-  it("rejects a proof with a flipped C byte with exit 401", async () => {
+  it("rejects a tampered proof with exit 401 before parking", async () => {
     const pi = fixturePublicInputs();
     const proof = fixtureProof();
-    // Toggle the Y-sign compression flag on C. The point stays on
-    // curve (just negated) so the BLS_G1_INGROUP filter passes, and
-    // only the pairing equation fails.
     const tampered = Buffer.from(proof.c);
     tampered[0] ^= 0x20;
     const badProof = { ...proof, c: tampered };
 
-    const r = await verifier.sendVerifyClaim(deployer.getSender(), {
+    const r = await verifier.sendVerifyClaim(user.getSender(), {
       value: toNano("0.5"),
       queryId: 2n,
       proof: badProof,
       publicInputs: pi,
     });
-
     const tx = r.transactions.find(
       (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
     );
     expect((tx as any).description?.computePhase?.exitCode).toBe(401);
-    expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(false);
-  });
-
-  it("rejects a replayed nullifier with exit 402", async () => {
-    const pi = fixturePublicInputs();
-    const proof = fixtureProof();
-
-    const first = await verifier.sendVerifyClaim(deployer.getSender(), {
-      value: toNano("0.5"),
-      queryId: 10n,
-      proof,
-      publicInputs: pi,
-    });
-    expect(
-      (first.transactions.find(
-        (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
-      ) as any)?.description?.computePhase?.success,
-    ).toBe(true);
-
-    const second = await verifier.sendVerifyClaim(deployer.getSender(), {
-      value: toNano("0.5"),
-      queryId: 11n,
-      proof,
-      publicInputs: pi,
-    });
-    const tx2 = second.transactions.find(
-      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
-    );
-    expect((tx2 as any).description?.computePhase?.exitCode).toBe(402);
+    expect(await verifier.getNextQueryId()).toBe(1n);
   });
 
   it("rejects an expired proof with exit 403", async () => {
     const pi = { ...fixturePublicInputs(), expiration: 1n };
     const proof = fixtureProof();
-
-    const r = await verifier.sendVerifyClaim(deployer.getSender(), {
+    const r = await verifier.sendVerifyClaim(user.getSender(), {
       value: toNano("0.5"),
-      queryId: 20n,
+      queryId: 3n,
       proof,
       publicInputs: pi,
     });
@@ -172,29 +182,12 @@ describe("Groth16Verifier (v0.2 Phase A, real proof fixture)", () => {
     expect((tx as any).description?.computePhase?.exitCode).toBe(403);
   });
 
-  it("rejects an unknown app_id with exit 404", async () => {
-    const pi = { ...fixturePublicInputs(), app_id: 999n };
-    const proof = fixtureProof();
-
-    const r = await verifier.sendVerifyClaim(deployer.getSender(), {
-      value: toNano("0.5"),
-      queryId: 30n,
-      proof,
-      publicInputs: pi,
-    });
-    const tx = r.transactions.find(
-      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
-    );
-    expect((tx as any).description?.computePhase?.exitCode).toBe(404);
-  });
-
   it("rejects a chain_id mismatch with exit 405", async () => {
     const pi = { ...fixturePublicInputs(), nonce: packNonce(2n, 0xfeedn) };
     const proof = fixtureProof();
-
-    const r = await verifier.sendVerifyClaim(deployer.getSender(), {
+    const r = await verifier.sendVerifyClaim(user.getSender(), {
       value: toNano("0.5"),
-      queryId: 40n,
+      queryId: 4n,
       proof,
       publicInputs: pi,
     });
@@ -204,17 +197,159 @@ describe("Groth16Verifier (v0.2 Phase A, real proof fixture)", () => {
     expect((tx as any).description?.computePhase?.exitCode).toBe(405);
   });
 
-  it("encodes the public-input cell snake stably (3 + 3 + 2)", () => {
+  it("completes the mint on a positive registry reply", async () => {
     const pi = fixturePublicInputs();
-    const head = buildPublicInputsCell(pi);
-    expect(head.bits.length).toBe(3 * 256);
-    expect(head.refs.length).toBe(1);
-    const c1 = head.refs[0];
-    expect(c1.bits.length).toBe(3 * 256);
-    expect(c1.refs.length).toBe(1);
-    const c2 = c1.refs[0];
-    expect(c2.bits.length).toBe(2 * 256);
-    expect(c2.refs.length).toBe(0);
+    const proof = fixtureProof();
+    await verifier.sendVerifyClaim(user.getSender(), {
+      value: toNano("0.5"),
+      queryId: 1n,
+      proof,
+      publicInputs: pi,
+    });
+    expect(await verifier.getIsParked(1n)).toBe(true);
+
+    // Simulate registry replying with is_registered=true.
+    const replyBody = buildQueryReply({
+      queryId: 1n,
+      appId: pi.app_id,
+      claimType: pi.claim_type,
+      isRegistered: true,
+    });
+    const r = await registry.send({
+      to: verifier.address,
+      value: toNano("0.2"),
+      body: replyBody,
+    });
+    const replyTx = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
+    );
+    expect((replyTx as any).description?.computePhase?.success).toBe(true);
+    expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(true);
+    expect(await verifier.getIsParked(1n)).toBe(false);
+
+    // The verifier should have forwarded a mint message to the collection.
+    const mint = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === collection.address.toString(),
+    );
+    expect(mint).toBeDefined();
+  });
+
+  it("drops parked entry on a negative registry reply, no mint sent", async () => {
+    const pi = fixturePublicInputs();
+    await verifier.sendVerifyClaim(user.getSender(), {
+      value: toNano("0.5"),
+      queryId: 1n,
+      proof: fixtureProof(),
+      publicInputs: pi,
+    });
+
+    const replyBody = buildQueryReply({
+      queryId: 1n,
+      appId: pi.app_id,
+      claimType: pi.claim_type,
+      isRegistered: false,
+    });
+    const r = await registry.send({
+      to: verifier.address,
+      value: toNano("0.2"),
+      body: replyBody,
+    });
+    const replyTx = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
+    );
+    expect((replyTx as any).description?.computePhase?.success).toBe(true);
+    expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(false);
+    expect(await verifier.getIsParked(1n)).toBe(false);
+    const mintTx = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === collection.address.toString(),
+    );
+    expect(mintTx).toBeUndefined();
+  });
+
+  it("rejects op::query_reply from a non-registry sender with exit 430", async () => {
+    const pi = fixturePublicInputs();
+    await verifier.sendVerifyClaim(user.getSender(), {
+      value: toNano("0.5"),
+      queryId: 1n,
+      proof: fixtureProof(),
+      publicInputs: pi,
+    });
+
+    const r = await user.send({
+      to: verifier.address,
+      value: toNano("0.2"),
+      body: buildQueryReply({
+        queryId: 1n,
+        appId: pi.app_id,
+        claimType: pi.claim_type,
+        isRegistered: true,
+      }),
+    });
+    const tx = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
+    );
+    expect((tx as any).description?.computePhase?.exitCode).toBe(430);
+  });
+
+  it("rejects op::query_reply with an unknown query_id with exit 431", async () => {
+    const r = await registry.send({
+      to: verifier.address,
+      value: toNano("0.2"),
+      body: buildQueryReply({
+        queryId: 9999n,
+        appId: 1n,
+        claimType: 1n,
+        isRegistered: true,
+      }),
+    });
+    const tx = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
+    );
+    expect((tx as any).description?.computePhase?.exitCode).toBe(431);
+  });
+
+  it("rejects nullifier replay on a positive reply with exit 402", async () => {
+    const pi = fixturePublicInputs();
+    // Park + reply once.
+    await verifier.sendVerifyClaim(user.getSender(), {
+      value: toNano("0.5"),
+      queryId: 1n,
+      proof: fixtureProof(),
+      publicInputs: pi,
+    });
+    await registry.send({
+      to: verifier.address,
+      value: toNano("0.2"),
+      body: buildQueryReply({
+        queryId: 1n,
+        appId: pi.app_id,
+        claimType: pi.claim_type,
+        isRegistered: true,
+      }),
+    });
+    expect(await verifier.getNullifierUsed(pi.nullifier)).toBe(true);
+
+    // Re-park the same proof, then reply.
+    await verifier.sendVerifyClaim(user.getSender(), {
+      value: toNano("0.5"),
+      queryId: 2n,
+      proof: fixtureProof(),
+      publicInputs: pi,
+    });
+    const r = await registry.send({
+      to: verifier.address,
+      value: toNano("0.2"),
+      body: buildQueryReply({
+        queryId: 2n,
+        appId: pi.app_id,
+        claimType: pi.claim_type,
+        isRegistered: true,
+      }),
+    });
+    const tx = r.transactions.find(
+      (t) => t.inMessage?.info.dest?.toString() === verifier.address.toString(),
+    );
+    expect((tx as any).description?.computePhase?.exitCode).toBe(402);
   });
 
   it("exposes the op constant via the wrapper", () => {
