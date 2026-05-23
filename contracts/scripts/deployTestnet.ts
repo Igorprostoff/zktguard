@@ -45,40 +45,7 @@ import {
 import { TonClient } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 
-// ---------- toncenter rate-limit guardrail ----------
-//
-// The free testnet toncenter tier is ~1 RPS. Every public method
-// goes through a shared mutex so consecutive calls are spaced by at
-// least RATE_DELAY_MS. On HTTP 429, we sleep RETRY_BACKOFF_MS and
-// retry up to MAX_RETRIES times.
-
-const RATE_DELAY_MS = Number(process.env.RATE_DELAY_MS ?? 1_500);
-const RETRY_BACKOFF_MS = Number(process.env.RETRY_BACKOFF_MS ?? 20_000);
-const MAX_RETRIES = Number(process.env.MAX_RETRIES ?? 6);
-
-let throttleChain: Promise<unknown> = Promise.resolve();
-function throttled<T>(fn: () => Promise<T>): Promise<T> {
-  const next = throttleChain.then(async () => {
-    await new Promise((r) => setTimeout(r, RATE_DELAY_MS));
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        return await fn();
-      } catch (e: any) {
-        const status = e?.response?.status ?? e?.status;
-        if (status === 429) {
-          const wait = RETRY_BACKOFF_MS * Math.pow(2, attempt);
-          console.warn(`  [rate-limit] sleep ${wait}ms then retry (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          await new Promise((r) => setTimeout(r, wait));
-          continue;
-        }
-        throw e;
-      }
-    }
-    throw new Error("toncenter retries exhausted");
-  });
-  throttleChain = next.catch(() => undefined);
-  return next as Promise<T>;
-}
+import { throttled } from "../lib/throttle";
 
 import {
   AppRegistry,
