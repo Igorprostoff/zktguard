@@ -7,7 +7,7 @@ export function App() {
       title="DAO vote"
       blurb="Vote weight scales with how long your Telegram account has existed. Older accounts get a bigger ballot — the DAO never sees the account."
       ctaIdle="Stake my vote"
-      defaultVerifier="EQDk2VTvn04SUKJrW7rXahzdF8_Qi6utb0wj43InCu9vdjrR"
+      defaultVerifier="kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O"
       renderSuccess={(cred: Credential, addr: string) => (
         <>
           <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>

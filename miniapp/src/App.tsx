@@ -118,8 +118,8 @@ function buildConfig(): ZktGuardConfig {
   return {
     network: (env.VITE_NETWORK as ZktGuardConfig["network"]) ?? "testnet",
     verifierAddress: env.VITE_VERIFIER_ADDRESS ??
-      // Placeholder until Task D1 deploys to testnet.
-      "EQDk2VTvn04SUKJrW7rXahzdF8_Qi6utb0wj43InCu9vdjrR",
+      // v0.2 Phase-D1 testnet verifier — see contracts/DEPLOYMENTS.md.
+      "kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O",
     attestorUrl: env.VITE_ATTESTOR_URL ?? "http://127.0.0.1:7677",
     proverUrl: env.VITE_PROVER_URL ?? "http://127.0.0.1:7679",
   };

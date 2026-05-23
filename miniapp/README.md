@@ -2,6 +2,18 @@
 
 Reference Telegram Mini App, built with React + Vite and deployed as a static site. Demonstrates the end-to-end flow: connect a TON wallet, ask the attestor for a signed transcript, build a Groth16 proof, and submit the verify message to the on-chain verifier.
 
+## Try it now
+
+The v0.2 Phase-D1 contracts are live on **TON testnet**. Point a testnet wallet at:
+
+| Contract            | Address                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Groth16Verifier     | [`kQDEYarA…D9vG__O`](https://testnet.tonscan.org/address/kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O) |
+| AppRegistry         | [`kQAyi4Dt…f0APspV`](https://testnet.tonscan.org/address/kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV) |
+| SoulboundCollection | [`kQDN-5cr…dTOISty`](https://testnet.tonscan.org/address/kQDN-5crzz5jUS-O61k8RIqyoRqi26i8nDGcgT93PdTOISty) |
+
+`miniapp/.env.example` already pins these. Copy it to `.env.local` and run `pnpm dev`.
+
 ## Quickstart
 
 ```bash
