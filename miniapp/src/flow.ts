@@ -62,12 +62,46 @@ export async function runClaimFlow(
 }
 
 function sampleClaimOptions() {
+  const override = readClaimOverride();
   return {
-    appId: 1n,
-    claimType: 1n,
-    thresholdMonths: 6n,
-    userSecret: 0xc0ffeen,
-    expirationSec: BigInt(Math.floor(Date.now() / 1000)) + 3600n,
+    appId: override?.appId ?? 1n,
+    claimType: override?.claimType ?? 1n,
+    thresholdMonths: override?.thresholdMonths ?? 6n,
+    userSecret: override?.userSecret ?? 0xc0ffeen,
+    expirationSec:
+      override?.expirationSec ??
+      BigInt(Math.floor(Date.now() / 1000)) + 3600n,
+  };
+}
+
+/**
+ * The Playwright e2e suite injects `window.__ZKTGUARD_CLAIM_OVERRIDE__`
+ * before app boot so each test gets a unique nullifier. Values are
+ * hex strings to stay safe across the window boundary; we coerce to
+ * bigint here. The global is absent in production.
+ */
+interface ClaimOverride {
+  appId?: bigint;
+  claimType?: bigint;
+  thresholdMonths?: bigint;
+  userSecret?: bigint;
+  expirationSec?: bigint;
+}
+
+function readClaimOverride(): ClaimOverride | undefined {
+  if (typeof window === "undefined") return undefined;
+  const raw = (window as unknown as Record<string, unknown>)[
+    "__ZKTGUARD_CLAIM_OVERRIDE__"
+  ] as Record<string, string | undefined> | undefined;
+  if (!raw) return undefined;
+  const toBig = (v: string | undefined): bigint | undefined =>
+    v === undefined ? undefined : BigInt(v);
+  return {
+    appId: toBig(raw.appId),
+    claimType: toBig(raw.claimType),
+    thresholdMonths: toBig(raw.thresholdMonths),
+    userSecret: toBig(raw.userSecret),
+    expirationSec: toBig(raw.expirationSec),
   };
 }
 

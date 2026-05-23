@@ -20,6 +20,17 @@ import { MiniAppPage } from "./pages/MiniAppPage";
 
 const STUB_GLOBAL_NAME = "__TONCONNECT_TEST_STUB__";
 const SEND_BRIDGE_NAME = "__stubSendTransaction";
+const CLAIM_OVERRIDE_GLOBAL = "__ZKTGUARD_CLAIM_OVERRIDE__";
+
+/** Per-claim override that the Mini App's `flow.ts` consumes. */
+export interface ClaimOverride {
+  appId?: bigint;
+  claimType?: bigint;
+  thresholdMonths?: bigint;
+  userSecret?: bigint;
+  /** Unix seconds. */
+  expirationSec?: bigint;
+}
 
 // Per-process salt so nullifiers do not collide between local runs of
 // the same spec. CI may override via env so a tagged release pins the
@@ -33,6 +44,8 @@ interface E2EFixtures {
   walletStub: WalletStub;
   userSecret: bigint;
   expectedNullifier: bigint;
+  /** Override the Mini App's claim options before goto(). */
+  setClaimOverride: (o: ClaimOverride) => Promise<void>;
 }
 
 export const test = baseTest.extend<E2EFixtures>({
@@ -70,7 +83,32 @@ export const test = baseTest.extend<E2EFixtures>({
     await use(n as bigint);
   },
 
-  app: async ({ page, walletStub }, use) => {
+  setClaimOverride: async ({ page, userSecret }, use) => {
+    let installed = false;
+    const fn = async (o: ClaimOverride) => {
+      const payload: Record<string, string> = {};
+      const u = o.userSecret ?? userSecret;
+      payload.userSecret = "0x" + u.toString(16);
+      if (o.appId !== undefined) payload.appId = "0x" + o.appId.toString(16);
+      if (o.claimType !== undefined)
+        payload.claimType = "0x" + o.claimType.toString(16);
+      if (o.thresholdMonths !== undefined)
+        payload.thresholdMonths = "0x" + o.thresholdMonths.toString(16);
+      if (o.expirationSec !== undefined)
+        payload.expirationSec = "0x" + o.expirationSec.toString(16);
+      await page.addInitScript(
+        ({ globalName, value }) => {
+          (window as unknown as Record<string, unknown>)[globalName] = value;
+        },
+        { globalName: CLAIM_OVERRIDE_GLOBAL, value: payload },
+      );
+      installed = true;
+    };
+    await use(fn);
+    void installed;
+  },
+
+  app: async ({ page, walletStub, setClaimOverride, userSecret }, use) => {
     const info = walletStub.walletInfo();
 
     // Bridge: page-side calls `window.__stubSendTransaction(req)` and
@@ -100,6 +138,11 @@ export const test = baseTest.extend<E2EFixtures>({
         publicKey: info.publicKey,
       },
     );
+
+    // Install the test's userSecret by default. Specs that need other
+    // fields (claim_type, expiration) can call setClaimOverride again
+    // before goto().
+    await setClaimOverride({ userSecret });
 
     const app = new MiniAppPage(page);
     await app.goto();
