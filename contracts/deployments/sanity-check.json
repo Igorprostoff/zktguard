@@ -1,0 +1,10 @@
+{
+  "deployer": "kQBEhiWNej5aCTLMVnDxRC8esUz423bqhlUdj3hmDWFMMXUS",
+  "verify_tx": "3039fdf800bc62ad88eb4b2770cfabe2b68ba0ee57ef57b33302ebd3e9cc6022",
+  "registry_query_tx": "9774420f4256c505dcc474ef5ba4a8b98d9867a42e670e744bb24dab6626f000",
+  "registry_reply_tx": "695586950efed1b8484f47d13e049e87c662196eb38751b2be6415271645b474",
+  "mint_tx": "077496a2b366536912afb81a4fae4bbaafb1c25747561e2f105456c8ff3d4547",
+  "nullifier": "0x2d55357cc9ee7d60f2efabe948b19e0d8b156d93a419542b56da95b6b33b32ed",
+  "parked_observed": false,
+  "nullifier_recorded": true
+}
