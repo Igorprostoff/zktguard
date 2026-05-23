@@ -9,7 +9,7 @@
 import { Address, TonClient } from "@ton/ton";
 
 import { throttled } from "../../../contracts/lib/throttle";
-import deployment from "../../../contracts/deployments/v0.2-testnet.json";
+import deployment from "../../../contracts/deployments/v0.2-testnet.json" with { type: "json" };
 
 export const VERIFIER_ADDR = Address.parse(deployment.verifier.address);
 export const REGISTRY_ADDR = Address.parse(deployment.registry.address);
