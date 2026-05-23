@@ -1,3 +1,7 @@
+// MUST be first — installs the Buffer global before @ton/core or
+// @tonconnect/ui-react evaluate at import time.
+import "./polyfills";
+
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { TonConnectUIProvider } from "@tonconnect/ui-react";
