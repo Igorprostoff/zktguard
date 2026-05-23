@@ -13,7 +13,7 @@
  * imports its hooks from this file instead of directly from
  * `@tonconnect/ui-react`.
  */
-import type { ReactNode } from "react";
+import { createElement, type ReactNode } from "react";
 import * as TonConnectUIReact from "@tonconnect/ui-react";
 
 interface TestStub {
@@ -65,6 +65,7 @@ export function useTonConnectUI(): [
 }
 
 type TonConnectButtonProps = Parameters<typeof TonConnectUIReact.TonConnectButton>[0];
+const RealTonConnectButton = TonConnectUIReact.TonConnectButton;
 export function TonConnectButton(props: TonConnectButtonProps = {}): ReactNode {
   const stub = readStub();
   if (stub) {
@@ -73,7 +74,10 @@ export function TonConnectButton(props: TonConnectButtonProps = {}): ReactNode {
     // state via `useTonAddress` instead.
     return null;
   }
-  return TonConnectUIReact.TonConnectButton(props);
+  // TonConnectButton is a memo()-wrapped component (an object, not a
+  // function), so calling it directly throws. Hand it back to React
+  // as JSX via createElement (this file is .ts, not .tsx).
+  return createElement(RealTonConnectButton, props);
 }
 
 export { TonConnectUIProvider } from "@tonconnect/ui-react";
