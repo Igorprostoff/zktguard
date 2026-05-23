@@ -34,6 +34,18 @@ export async function runClaimFlow(
   args.onStage("proving");
   const credential = await args.client.requireClaim(claim, claimOptions);
 
+  // e2e hook: when the test harness has installed the claim override
+  // global, also surface the SDK's last claim so the spec can assert
+  // the UI displays the same nullifier the prover produced. Gated on
+  // the same flag as the override so production never writes here.
+  if (typeof window !== "undefined" && readClaimOverride() !== undefined) {
+    (window as unknown as Record<string, unknown>)["__ZKTGUARD_LAST_CLAIM__"] =
+      {
+        nullifier: credential.nullifier.toString(),
+        publicInputs: credential.publicInputs.map((p) => p.toString()),
+      };
+  }
+
   if (args.tonConnectUI) {
     args.onStage("submitting");
     const body = buildVerifierMessageBody({

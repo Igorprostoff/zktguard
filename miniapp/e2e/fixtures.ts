@@ -2,12 +2,14 @@
  * Playwright fixtures shared by every spec.
  *
  * Each test gets:
- *   - `app`              — the page object (querying by data-testid)
- *   - `walletStub`       — the Node-side WalletStub bound to the test wallet
- *   - `userSecret`       — deterministic-from-test-title 256-bit secret
- *   - `expectedNullifier`— Poseidon(userSecret, app_id, claim_type) for that
- *                          test, expressed as a 0x-hex string matching the
- *                          UI's nullifier-display
+ *   - `app`         — the page object (querying by data-testid)
+ *   - `walletStub`  — the Node-side WalletStub bound to the test wallet
+ *   - `userSecret`  — deterministic-from-test-title 256-bit secret
+ *
+ * Specs that need to assert UI ⇔ proof nullifier equality read the
+ * SDK's last-claim record from `window.__ZKTGUARD_LAST_CLAIM__`,
+ * which `miniapp/src/flow.ts` writes when the claim-override global
+ * is present (i.e., in test mode).
  *
  * The wallet stub is installed before the Mini App's bundle runs via
  * `addInitScript` + a `__stubSendTransaction` page-side function.
@@ -43,7 +45,6 @@ interface E2EFixtures {
   app: MiniAppPage;
   walletStub: WalletStub;
   userSecret: bigint;
-  expectedNullifier: bigint;
   /** Override the Mini App's claim options before goto(). */
   setClaimOverride: (o: ClaimOverride) => Promise<void>;
 }
@@ -70,17 +71,6 @@ export const test = baseTest.extend<E2EFixtures>({
     bytes[0] &= 0x3f;
     const hex = "0x" + bytes.toString("hex");
     await use(BigInt(hex));
-  },
-
-  expectedNullifier: async ({ userSecret }, use) => {
-    // Poseidon over BN254 — circomlibjs hash is field-correct for our
-    // research-grade circuit. Loaded lazily so suites that don't need
-    // it (e.g. expired-proof, unregistered-app) skip the cost.
-    // @ts-expect-error circomlibjs has no published types
-    const { buildPoseidon } = await import("circomlibjs");
-    const poseidon = await buildPoseidon();
-    const n = poseidon.F.toObject(poseidon([userSecret, 1n, 1n]));
-    await use(n as bigint);
   },
 
   setClaimOverride: async ({ page, userSecret }, use) => {

@@ -335,9 +335,6 @@ importers:
       '@zktguard/wallet-stub':
         specifier: workspace:*
         version: link:e2e/wallet-stub
-      circomlibjs:
-        specifier: ^0.1.7
-        version: 0.1.7
       jsdom:
         specifier: ^24.0.0
         version: 24.1.3

@@ -29,7 +29,6 @@
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
     "@zktguard/wallet-stub": "workspace:*",
-    "circomlibjs": "^0.1.7",
     "jsdom": "^24.0.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.10",

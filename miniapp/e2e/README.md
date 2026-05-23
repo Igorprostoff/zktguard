@@ -10,7 +10,7 @@ Four scenarios:
 
 | Spec                                        | Asserts                                       | Wall budget |
 | ------------------------------------------- | --------------------------------------------- | ----------- |
-| `specs/happy-path.spec.ts`                  | Connect, prove, mint, nullifier recorded      | ≤ 90 s |
+| `specs/happy-path.spec.ts`                  | UI displays the nullifier the SDK proof returned, and the on-chain `nullifier_used?` getter returns true for that value within 25 s of the Mini App reporting `done` | ≤ 90 s |
 | `specs/expired-proof.spec.ts`               | Verifier rejects with exit 403                | ≤ 60 s |
 | `specs/replayed-nullifier.spec.ts`          | First mint succeeds, second exits 402 on reply | ≤ 180 s |
 | `specs/unregistered-app.spec.ts`            | Verifier parks, registry returns false, no mint | ≤ 120 s |
