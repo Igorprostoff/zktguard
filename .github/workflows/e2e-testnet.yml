@@ -31,6 +31,13 @@ jobs:
     env:
       WALLET_STUB_MNEMONIC: ${{ secrets.WALLET_STUB_MNEMONIC }}
       TONCENTER_API_KEY: ${{ secrets.TONCENTER_API_KEY }}
+      # Throttle tuning for the suite: tighter than the deploy-time
+      # defaults so a transient 5xx doesn't consume a spec's whole
+      # budget. Workflow time still dominated by Vite + Playwright
+      # browser load + the sequential nature of the four scenarios.
+      RATE_DELAY_MS: "1500"
+      RETRY_BACKOFF_MS: "5000"
+      MAX_RETRIES: "3"
     steps:
       - uses: actions/checkout@v4
 
@@ -60,7 +67,29 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Bring up off-chain stack
-        run: docker compose -f infra/docker-compose.yml up -d --wait
+        run: docker compose -f infra/docker-compose.yml up -d --wait --wait-timeout 300
+
+      - name: Verify off-chain endpoints are reachable from the host
+        run: |
+          set -e
+          for url in \
+            http://127.0.0.1:7676/account \
+            http://127.0.0.1:7677/health \
+            http://127.0.0.1:7677/pubkey \
+            http://127.0.0.1:7679/health; do
+            for i in $(seq 1 30); do
+              if curl -fs "$url" >/dev/null; then
+                echo "ok: $url"
+                break
+              fi
+              if [ "$i" = "30" ]; then
+                echo "::error::endpoint never responded: $url"
+                docker compose -f infra/docker-compose.yml logs --tail=200
+                exit 1
+              fi
+              sleep 2
+            done
+          done
 
       - name: Run Playwright suite
         run: pnpm --filter @zktguard/miniapp test:e2e
