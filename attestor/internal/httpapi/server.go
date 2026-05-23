@@ -30,12 +30,28 @@ func New(att *attestor.Attestor, stubURL string) *Server {
 }
 
 // Handler builds an http.ServeMux with /attest, /pubkey, /health.
+// All responses carry permissive CORS headers so the Mini App
+// (served by Vite on a different origin in dev) can reach the
+// attestor from a browser context.
 func (s *Server) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", s.handleHealth)
 	mux.HandleFunc("/pubkey", s.handlePubkey)
 	mux.HandleFunc("/attest", s.handleAttest)
-	return mux
+	return withCORS(mux)
+}
+
+func withCORS(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		h.ServeHTTP(w, r)
+	})
 }
 
 type healthResp struct {

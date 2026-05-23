@@ -100,7 +100,15 @@ export async function buildProof(witness: ProveInputWitness): Promise<ProveRespo
 }
 
 function writeJSON(res: http.ServerResponse, code: number, body: unknown): void {
-  res.writeHead(code, { "content-type": "application/json" });
+  res.writeHead(code, {
+    "content-type": "application/json",
+    // Permissive CORS so the Mini App (served from Vite on a
+    // different origin in dev / Playwright) can reach the prover
+    // from a browser.
+    "access-control-allow-origin": "*",
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "Content-Type",
+  });
   res.end(JSON.stringify(body));
 }
 
@@ -136,6 +144,15 @@ export function makeServer(): http.Server {
   return http.createServer(async (req, res) => {
     if (!req.url) {
       writeJSON(res, 400, { error: "no url" });
+      return;
+    }
+    if (req.method === "OPTIONS") {
+      res.writeHead(204, {
+        "access-control-allow-origin": "*",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers": "Content-Type",
+      });
+      res.end();
       return;
     }
     if (req.url === "/health" && req.method === "GET") {
