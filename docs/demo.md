@@ -6,16 +6,25 @@ sidebar_position: 9
 
 # Five-minute demo
 
-Walk-through script for the v0.2 Mini App against the local off-chain
-stack. The demo assumes Telegram + TON Connect on a phone or a desktop
-browser; no production hosting is required.
+Walk-through for the v0.2 Mini App against the **live testnet
+deployment** (v0.2 Phase D1). No production hosting required; you run
+the Mini App and the off-chain helpers locally.
 
-> **Note.** This script targets the *local* deployment. A testnet
-> deployment with real contract addresses is on the v0.3 roadmap
-> (DoD Task D1 is gated on a funded testnet wallet, which this
-> repository intentionally does not commit). When that ships, replace
-> the `VITE_VERIFIER_ADDRESS` placeholder below with the testnet
-> address from `contracts/DEPLOYMENTS.md`.
+> **Video.** A 90-second phone-recorded walk-through is the one
+> outstanding piece of Task D5 — committed as
+> `docs/static/demo.mp4` once a human records it on iOS or Android.
+> This markdown is the canonical demo doc until then.
+
+## Live testnet addresses
+
+| Contract            | Address                                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------------------------- |
+| Groth16Verifier     | [`kQDEYarA…D9vG__O`](https://testnet.tonscan.org/address/kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O) |
+| AppRegistry         | [`kQAyi4Dt…f0APspV`](https://testnet.tonscan.org/address/kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV) |
+| SoulboundCollection | [`kQDN-5cr…dTOISty`](https://testnet.tonscan.org/address/kQDN-5crzz5jUS-O61k8RIqyoRqi26i8nDGcgT93PdTOISty) |
+
+The deployer wallet and full audit trail are in
+[`contracts/DEPLOYMENTS.md`](https://github.com/Igorprostoff/zktguard/blob/main/contracts/DEPLOYMENTS.md).
 
 ## Prereqs (one-time)
 
@@ -37,43 +46,80 @@ browser; no production hosting is required.
    (Or `pnpm --filter @zktguard/prover-server start`, plus
    `make -C attestor stub` and `make -C attestor attestor` in separate
    terminals — same outcome, fewer containers.)
+4. Fund a testnet wallet via [@testgiver_ton_bot](https://t.me/testgiver_ton_bot).
+   Anything over 0.5 TON is enough for one demo run.
 
 ## The five-minute path
 
-1. **Open the Mini App.**
-   ```bash
-   pnpm --filter @zktguard/miniapp dev
-   ```
-   Browse to `http://127.0.0.1:5173`.
+### 1. Open the Mini App
 
-2. **Connect a wallet.** Tap the TON Connect button and choose your
-   testnet-funded Tonkeeper / MyTonWallet account. Once the wallet
-   address shows in the badge, the **Verify Telegram account age**
-   button becomes active.
+```bash
+cp miniapp/.env.example miniapp/.env.local
+pnpm --filter @zktguard/miniapp dev
+```
 
-3. **Tap Verify.** The Mini App calls the attestor, then the prover
-   server, then assembles a verifier message. The status badge cycles
-   through `attesting → proving → submitting`.
+Browse to `http://127.0.0.1:5173`.
 
-4. **Sign the transaction.** TON Connect pops a confirmation in your
-   wallet. The transaction carries the four-ref `op::verify_claim`
-   body and ~0.5 TON for gas.
+**What you should see:** a dark card titled "zkTGuard" with the
+`v0.2 Phase A — real VK` badge, a TON Connect button, and a disabled
+**Connect a wallet first** button.
 
-5. **Watch the credential land.** The verifier parks the proof, the
-   registry replies, the soulbound collection mints. The Mini App
-   polls `getProofStatus` until it returns `{ status: "minted" }` and
-   shows the resulting credential block.
+### 2. Connect a wallet
 
-Expected wall time, end to end:
+Tap the TON Connect button. Pick your testnet-funded Tonkeeper or
+MyTonWallet account.
 
-| Hop                                  | Wall time (rough) |
-| ------------------------------------ | ----------------- |
-| Attestor stub fetch + sign           | ~50 ms            |
-| Prover server (snarkjs Groth16)      | 4–10 s            |
-| Wallet sign + broadcast              | 5–15 s (UX bound) |
-| On-chain verify + registry round-trip| 5–10 s            |
-| Mint deploy                          | 3–5 s             |
-| **Total**                            | ~20–40 s          |
+**What you should see:** the TON Connect dialog closes, the badge
+flips to the connected wallet's truncated address, and the
+**Verify Telegram account age** button becomes active.
+
+### 3. Tap Verify
+
+The Mini App calls the attestor, then the prover server, then
+assembles the four-ref verifier message.
+
+**What you should see:** the button label cycles through
+`Asking the attestor…` → `Building the proof…` → `Submitting to
+TON…` over ~5–10 seconds.
+
+### 4. Sign the transaction
+
+TON Connect pops a confirmation in your wallet. The transaction
+carries the four-ref `op::verify_claim` body and ~0.5 TON for gas.
+
+**What you should see:** a wallet confirmation prompt showing the
+verifier address `kQDEYarA…` and the 0.5 TON value. Sign it. The
+wallet returns to the Mini App.
+
+### 5. Watch the credential land
+
+The verifier parks the proof, queries the registry, receives the
+reply, records the nullifier, and sends `op::mint` to the soulbound
+collection. The Mini App polls `getProofStatus` until it returns
+`{ status: "minted" }`.
+
+**What you should see:** the button label settles on
+`Done — see credential below`, and a second card appears with the
+nullifier and the first two G1/G2 hex blobs from the proof. The
+collection's tonscan page now lists a new Item address; follow it to
+confirm the soulbound token exists.
+
+## Expected wall time
+
+Measured against the live deployment on 2026-05-23:
+
+| Hop                                              | Wall time |
+| ------------------------------------------------ | --------- |
+| Attestor stub fetch + sign                       | ~50 ms    |
+| Prover server (snarkjs Groth16)                  | 4–8 s     |
+| Wallet sign + broadcast                          | 5–15 s (UX bound) |
+| On-chain verify + park                           | 5–10 s    |
+| Registry round-trip (query + reply)              | 10–15 s   |
+| Mint deploy                                      | 5–10 s    |
+| **Total clock time**                             | **30–60 s** |
+
+Per-step on-chain transaction hashes from the v0.2 sanity-check run
+are in `contracts/deployments/sanity-check.json`.
 
 ## Failure modes worth mentioning
 
@@ -82,15 +128,20 @@ Expected wall time, end to end:
 - **Prover responds 500.** Check `WASM_PATH` and `PKEY_PATH` point at
   files that exist (the Docker compose mounts them; bare-metal runs
   need env vars set).
-- **Wallet rejects "exit code 433".** The verifier wasn't wired to a
-  registry yet. Run `sendSetRegistry` from a script — see
-  `contracts/scripts/`.
-- **Wallet rejects with no exit code.** TON Connect's fee estimation
-  might be off. Bump the `amount` field in `miniapp/src/flow.ts`.
+- **Wallet rejects with exit code 433.** The verifier wasn't wired to
+  the registry. This won't happen against the live deployment unless
+  the admin rotates the registry to a bad address; if it does, see
+  `contracts/scripts/sanityCheckTestnet.ts` for the rewire flow.
+- **`/prove` returns "circuit hash mismatch".** Re-run
+  `bash circuits/scripts/setup.sh` to refresh the proving key. The
+  committed VK in `circuits/account_age/verification_key.json` is the
+  canonical one the verifier was deployed against.
 
-## Recording a video
+## Recording the video
 
-A 90-second walkthrough video (DoD Task D5) is recorded by hand on a
-real iOS or Android device after a testnet deployment ships (Task
-D1). The placeholder slot is `docs/static/demo.mp4`; until it lands,
-this markdown is the canonical demo doc.
+90-second walk-through video, when it lands, will live at
+`docs/static/demo.mp4`. Capture suggestions:
+
+- Screen-record the Mini App side-by-side with tonscan.
+- Skip the "install Telegram" step; assume the viewer has a wallet.
+- Annotate the four on-chain hops as they confirm.
