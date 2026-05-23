@@ -48,6 +48,11 @@ services:
         condition: service_healthy
     ports:
       - "7677:7677"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:7677/health"]
+      interval: 5s
+      timeout: 2s
+      retries: 24
 
   prover-server:
     image: node:20-bookworm
@@ -69,7 +74,16 @@ services:
     ports:
       - "7679:7679"
     depends_on:
-      - attestor
+      attestor:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:7679/health || exit 1"]
+      interval: 5s
+      timeout: 2s
+      # pnpm install --prod cold-start can take ~60s on a clean
+      # volume, plus snarkjs zkey load on first /prove; give 5 min.
+      retries: 60
+      start_period: 60s
 
 volumes:
   attestor-keys:
