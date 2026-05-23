@@ -69,11 +69,14 @@ export function throttled<T>(
         return await fn();
       } catch (e) {
         const code = statusOf(e);
-        if (code === 429) {
+        // Retry on rate-limit (429) and any 5xx — toncenter testnet
+        // returns transient 500/502/503 under load that disappear on
+        // the next attempt.
+        if (code === 429 || (code !== undefined && code >= 500 && code < 600)) {
           const wait = retryBackoff * Math.pow(2, attempt);
           // eslint-disable-next-line no-console
           console.warn(
-            `  [rate-limit] sleep ${wait}ms then retry (attempt ${attempt + 1}/${maxRetries})`,
+            `  [toncenter ${code}] sleep ${wait}ms then retry (attempt ${attempt + 1}/${maxRetries})`,
           );
           await sleep(wait);
           continue;
