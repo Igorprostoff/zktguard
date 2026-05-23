@@ -33,34 +33,9 @@ import {
 } from "@ton/ton";
 import { mnemonicToPrivateKey } from "@ton/crypto";
 
-const TESTNET_ENDPOINT = "https://testnet.toncenter.com/api/v2/jsonRPC";
-const RATE_DELAY_MS = Number(process.env.RATE_DELAY_MS ?? 1_500);
-const RETRY_BACKOFF_MS = Number(process.env.RETRY_BACKOFF_MS ?? 20_000);
-const MAX_RETRIES = Number(process.env.MAX_RETRIES ?? 6);
+import { throttled } from "../lib/throttle";
 
-let throttleChain: Promise<unknown> = Promise.resolve();
-function throttled<T>(fn: () => Promise<T>): Promise<T> {
-  const next = throttleChain.then(async () => {
-    await new Promise((r) => setTimeout(r, RATE_DELAY_MS));
-    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
-      try {
-        return await fn();
-      } catch (e: any) {
-        const status = e?.response?.status ?? e?.status;
-        if (status === 429) {
-          const wait = RETRY_BACKOFF_MS * Math.pow(2, attempt);
-          console.warn(`  [rate-limit] sleep ${wait}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
-          await new Promise((r) => setTimeout(r, wait));
-          continue;
-        }
-        throw e;
-      }
-    }
-    throw new Error("toncenter retries exhausted");
-  });
-  throttleChain = next.catch(() => undefined);
-  return next as Promise<T>;
-}
+const TESTNET_ENDPOINT = "https://testnet.toncenter.com/api/v2/jsonRPC";
 
 async function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));

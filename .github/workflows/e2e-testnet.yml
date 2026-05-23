@@ -1,0 +1,79 @@
+# Playwright end-to-end suite against the live TON testnet.
+#
+# This workflow is intentionally NOT triggered on pull requests:
+#   - testnet RPC is flaky and rate-limited;
+#   - each scenario broadcasts real testnet TON, so the wallet would
+#     drain quickly under a heavy PR cadence;
+#   - the scenarios can collide on nullifiers if multiple runs of the
+#     same spec interleave.
+#
+# It runs on pushes to main, on `v*` tag pushes (release gate), and
+# on manual dispatch.
+#
+# The `WALLET_STUB_MNEMONIC` secret is configured under
+# Settings → Environments → test. The `environment: test` line on the
+# job is mandatory: without it, the secret evaluates to an empty
+# string and the suite silently skips.
+name: e2e-testnet
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+jobs:
+  e2e-testnet:
+    name: Playwright (testnet)
+    runs-on: ubuntu-latest
+    environment: test
+    timeout-minutes: 25
+    env:
+      WALLET_STUB_MNEMONIC: ${{ secrets.WALLET_STUB_MNEMONIC }}
+      TONCENTER_API_KEY: ${{ secrets.TONCENTER_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Defensive guard. The `environment: test` line above should
+      # always inject the secret; this prints a clear failure mode
+      # if a future repo-admin misconfiguration drops it.
+      - name: Verify wallet secret is available
+        run: |
+          if [ -z "${WALLET_STUB_MNEMONIC}" ]; then
+            echo "::error::WALLET_STUB_MNEMONIC is empty; check the test environment configuration."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Build SDK + Mini App
+        run: pnpm build
+
+      - name: Install Playwright browsers
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Bring up off-chain stack
+        run: docker compose -f infra/docker-compose.yml up -d --wait
+
+      - name: Run Playwright suite
+        run: pnpm --filter @zktguard/miniapp test:e2e
+
+      - name: Upload Playwright report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Tear down off-chain stack
+        if: always()
+        run: docker compose -f infra/docker-compose.yml down -v

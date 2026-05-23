@@ -3,7 +3,7 @@ import {
   TonConnectButton,
   useTonAddress,
   useTonConnectUI,
-} from "@tonconnect/ui-react";
+} from "./connect";
 
 import {
   ZktGuardClient,
@@ -60,7 +60,9 @@ export function App() {
       <div className="card">
         <div className="row between" style={{ marginBottom: 12 }}>
           <span className="badge">v0.2 Phase A — real VK</span>
-          <TonConnectButton />
+          <span data-testid="wallet-connect-button">
+            <TonConnectButton />
+          </span>
         </div>
         <button
           className="primary"
@@ -70,6 +72,7 @@ export function App() {
         >
           {labelForStage(stage, userAddress)}
         </button>
+        <div data-testid="status-display" style={{ display: "none" }}>{stage}</div>
         {error && (
           <div className="error" role="alert" data-testid="error">
             {error}
@@ -83,7 +86,18 @@ export function App() {
           <p style={{ margin: "0 0 8px", fontSize: 13 }}>
             Nullifier (hex):
           </p>
-          <pre>{"0x" + credential.nullifier.toString(16)}</pre>
+          <pre data-testid="nullifier-display">
+            {"0x" + credential.nullifier.toString(16)}
+          </pre>
+          <p style={{ margin: "12px 0 8px", fontSize: 13 }}>
+            Credential identifier (= nullifier; the on-chain Item
+            address is derived deterministically from the
+            collection's next_index at mint time and is not
+            client-predictable in v0.2):
+          </p>
+          <pre data-testid="credential-address-display">
+            {"0x" + credential.nullifier.toString(16)}
+          </pre>
           <p style={{ margin: "12px 0 8px", fontSize: 13 }}>Proof.A:</p>
           <pre>{credential.proof.aHex}</pre>
           <p style={{ margin: "12px 0 8px", fontSize: 13 }}>Proof.C:</p>

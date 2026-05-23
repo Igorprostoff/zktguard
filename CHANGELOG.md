@@ -62,12 +62,40 @@ D3, D5, D6 closing pieces:
   acknowledges the single-party Phase-2 as the new standing
   limitation.
 
+### v0.2 Phase D4 — Playwright e2e against testnet
+
+- New workspace `miniapp/e2e/wallet-stub/` implements the TON Connect
+  2.0 subset the Mini App reads, signs with a hardcoded testnet seed,
+  and broadcasts via the shared `contracts/lib/throttle` wrapper. The
+  Mini App's `src/connect.ts` routes through the stub when the page
+  installs `window.__TONCONNECT_TEST_STUB__`.
+- Page object + fixture pair in `miniapp/e2e/` derive a per-test
+  `user_secret` from the spec title plus a per-run salt, and expose a
+  page-side claim-options override hook that `flow.ts` reads so the
+  Mini App emits a unique nullifier per scenario.
+- Four scenarios on the live D1 deployment:
+  - `happy-path.spec.ts` — connect, verify, mint, `nullifier_used?`
+    becomes true within budget (≤ 90 s).
+  - `expired-proof.spec.ts` — tampered `expiration` triggers exit
+    403 before the pairing check; no parked entry (≤ 60 s).
+  - `replayed-nullifier.spec.ts` — second submission of the same
+    Poseidon hash rejected with exit 402 on the registry reply;
+    sacrificed `user_secret` documented in the spec (≤ 180 s).
+  - `unregistered-app.spec.ts` — verifier parks, registry replies
+    `is_registered=false`, parked entry dropped, no mint (≤ 120 s).
+- New CI workflow `.github/workflows/e2e-testnet.yml` runs the suite
+  on pushes to `main`, on `v*` tag pushes, and on manual dispatch.
+  `environment: test` exposes `WALLET_STUB_MNEMONIC`; a defensive
+  guard fails loudly if the secret is empty. Workflow is the release
+  gate per `CONTRIBUTING.md`.
+- `contracts/lib/throttle.ts` now reads `RATE_DELAY_MS`,
+  `RETRY_BACKOFF_MS`, and `MAX_RETRIES` at call time so the
+  wallet-stub vitest can mutate the limits between cases.
+
 ### v0.2 known deferrals after Phase D
 
 - Phase B implementation (B2–B7): in-circuit ChaCha20-Poly1305 is
   still a multi-day engineering effort.
-- Task D4 — Playwright e2e against testnet. Scaffolding can land now
-  that D1 ships; the wallet-side automation is the open piece.
 - Task D5 — the 90-second video. Needs a human + phone.
 - v0.2 release tag. Pending B implementation.
 

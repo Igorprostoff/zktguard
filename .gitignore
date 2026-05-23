@@ -58,3 +58,8 @@ pnpm-debug.log*
 coverage/
 .nyc_output/
 .claude/
+
+# Playwright e2e
+playwright-report/
+test-results/
+.playwright-cache/
