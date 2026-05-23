@@ -31,6 +31,8 @@ Allowed types: `feat`, `fix`, `docs`, `chore`, `refactor`, `test`, `perf`, `buil
 
 Solo trunk-based development. Direct commits to `main`. Releases are tagged from `main` (`v0.1`, etc.). No long-lived feature branches in v0.
 
+Tagging a release requires a green `e2e-testnet` run on the tagged commit. The standard PR-time CI (`Node`, `Rust`, `Go`) does not gate the testnet suite — `e2e-testnet` runs only on pushes to `main` and on `v*` tag pushes, so verify the post-merge run completed before publishing the tag.
+
 ## Licensing
 
 All contributions are licensed under MIT, matching the repository license. Dependencies must use a permissive license (MIT, Apache 2.0, BSD). GPL and AGPL are not accepted in non-test code.
