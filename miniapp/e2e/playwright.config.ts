@@ -1,5 +1,12 @@
 import { defineConfig } from "@playwright/test";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
+
+// `__dirname` is undefined under Node's native ESM loader. Derive it
+// from `import.meta.url` so the config works whether Playwright loads
+// the file as ESM or transpiles it to CJS.
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const BASE_URL = process.env.E2E_BASE_URL ?? "http://localhost:5173";
 const isCI = !!process.env.CI;
