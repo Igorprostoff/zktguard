@@ -6,6 +6,71 @@ follow SemVer.
 
 ## [Unreleased]
 
+### v0.2 Phase D — testnet deployment
+
+zkTGuard v0.2 is now live on **TON testnet**. The three contracts
+were deployed in order (registry → collection → verifier), wired via
+the admin ops, and an end-to-end verify-claim was sent through the
+full async sequence.
+
+- AppRegistry: `kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV`
+- SoulboundCollection: `kQDN-5crzz5jUS-O61k8RIqyoRqi26i8nDGcgT93PdTOISty`
+- Groth16Verifier: `kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O`
+
+Wiring transactions:
+
+- `op::set_collection` on verifier: `fa1888d1…`
+- `op::set_registry` on verifier:   `ef1242f0…`
+- `op::set_verifier` on collection: `1f2db0b4…`
+- `op::register(1, 1)` on registry: `1f6cac2e…`
+
+End-to-end sanity check transaction hashes:
+
+- `op::verify_claim`:    `3039fdf8…`
+- `op::query_registered`: `9774420f…`
+- `op::query_reply`:     `69558695…`
+- `op::mint`:            `077496a2…`
+
+Full audit trail and tonscan links live in
+`contracts/DEPLOYMENTS.md`. The deployer wallet's seed never enters
+the repo (it lives in `.env.local`, gitignored). The deployer wallet
+is the admin for all three contracts; v1.0 would rotate this to a
+multisig.
+
+- `contracts/scripts/deployTestnet.ts` is the bespoke deploy driver
+  (Blueprint's CLI v0.27 hits a Node-24 `Dirent.path` regression and
+  can't enumerate scripts; the driver loads the wallet directly via
+  `@ton/ton` + `@ton/crypto` and emits the same artefacts).
+- `contracts/scripts/sanityCheckTestnet.ts` re-uses the Phase-A proof
+  fixture to drive the async flow end-to-end and writes a
+  per-hop tx-hash JSON.
+- `contracts/deployments/v0.2-testnet.json` and
+  `contracts/deployments/sanity-check.json` are the canonical
+  machine-readable records.
+
+D3, D5, D6 closing pieces:
+
+- `miniapp/.env.example` + each `examples/*/.env.example` ship pinned
+  to the testnet verifier. Default-verifier strings in the React
+  apps also point at the live address.
+- `docs/demo.md` rewritten against the live deployment. Adds a "What
+  you should see" line for each step and a measured wall-clock
+  table. Video is the only remaining D5 piece — recorded by hand on
+  a phone post-release.
+- `paper/zktguard.tex` Evaluation table now shows the four testnet
+  tx hashes; Limitations retires the placeholder-VK caveat and
+  acknowledges the single-party Phase-2 as the new standing
+  limitation.
+
+### v0.2 known deferrals after Phase D
+
+- Phase B implementation (B2–B7): in-circuit ChaCha20-Poly1305 is
+  still a multi-day engineering effort.
+- Task D4 — Playwright e2e against testnet. Scaffolding can land now
+  that D1 ships; the wallet-side automation is the open piece.
+- Task D5 — the 90-second video. Needs a human + phone.
+- v0.2 release tag. Pending B implementation.
+
 ### v0.2 Phase A — remote prover server (Task A5 closing piece)
 
 - New workspace `prover/server` ships `zktguard-prover-server`, a
