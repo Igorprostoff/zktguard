@@ -90,3 +90,10 @@ export function throttled<T>(
 export function resetThrottleChainForTests(): void {
   throttleChain = Promise.resolve();
 }
+
+// Default export so ESM consumers in `type: module` packages can
+// import the module via `import pkg from "..."` and destructure.
+// Node's ESM loader treats CJS-emitted modules as default-only, and
+// the consumers (miniapp/e2e/wallet-stub, miniapp/e2e/lib) live in
+// ESM packages while contracts/ stays CommonJS.
+export default { throttled, resetThrottleChainForTests };
