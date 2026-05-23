@@ -1,0 +1,17 @@
+{
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "noUnusedLocals": false,
+    "noUnusedParameters": false
+  },
+  "include": [
+    "fixtures.ts",
+    "playwright.config.ts",
+    "pages/**/*.ts",
+    "specs/**/*.ts",
+    "wallet-stub/src/**/*.ts"
+  ],
+  "exclude": ["node_modules", "wallet-stub/node_modules"]
+}

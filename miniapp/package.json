@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "tsc --noEmit",
+    "lint": "tsc --noEmit && tsc --noEmit -p e2e/tsconfig.json",
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
@@ -18,11 +18,18 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@testing-library/jest-dom": "^6.4.5",
     "@testing-library/react": "^15.0.7",
+    "@ton/core": "^0.62.0",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.4.0",
+    "@types/node": "^20.12.0",
     "@types/react": "^18.3.3",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "@zktguard/wallet-stub": "workspace:*",
+    "circomlibjs": "^0.1.7",
     "jsdom": "^24.0.0",
     "typescript": "^5.4.5",
     "vite": "^5.2.10",
