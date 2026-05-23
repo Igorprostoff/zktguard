@@ -4,24 +4,21 @@
  *
  * Wall-clock budget: 90 seconds.
  *
- * Independent assertions (independent of the on-chain mint, which
- * lags the UI by tens of seconds):
- *  - the UI's nullifier-display matches Poseidon(secret, 1, 1)
+ * Independent assertion (does not depend on the on-chain mint
+ * landing, which lags the UI by tens of seconds):
+ *   - the UI's nullifier-display matches Poseidon(secret, 1, 1)
  *
- * Cross-chain assertions (poll until they pass, within budget):
- *  - the verifier's `nullifier_used?` getter returns true for the
- *    same nullifier
+ * Cross-chain assertion (polled within budget):
+ *   - the verifier's `nullifier_used?` getter returns true for the
+ *     same nullifier
+ *
+ * The Mini App displays the nullifier as the credential identifier
+ * because the soulbound Item's address depends on the collection's
+ * `next_index` and the verifier's `now()` at reply time, neither
+ * predictable client-side. v0.3 will add an owner→item index.
  */
-import { TonClient, Address } from "@ton/ton";
-
 import { test, expect } from "../fixtures";
-import deployment from "../../../contracts/deployments/v0.2-testnet.json";
-import { throttled } from "../../../contracts/lib/throttle";
-
-const VERIFIER_ADDR = deployment.verifier.address;
-const TESTNET_ENDPOINT =
-  process.env.TON_TESTNET_ENDPOINT ??
-  "https://testnet.toncenter.com/api/v2/jsonRPC";
+import { isNullifierUsed, makeClient } from "../lib/chain";
 
 test("user verifies a valid claim and receives a soulbound credential", async ({
   app,
@@ -42,23 +39,13 @@ test("user verifies a valid claim and receives a soulbound credential", async ({
   expect(BigInt(uiNullifier)).toBe(expectedNullifier);
 
   // Now confirm the chain has recorded the mint. The verifier mints
-  // the soulbound item only after the registry replies; we poll for up
-  // to ~25 s, leaving headroom inside the 90 s budget.
-  const client = new TonClient({
-    endpoint: TESTNET_ENDPOINT,
-    apiKey: process.env.TONCENTER_API_KEY,
-  });
-  const verifierAddr = Address.parse(VERIFIER_ADDR);
-
+  // only after the registry replies; we poll for up to ~25 s, leaving
+  // headroom inside the 90 s budget.
+  const client = makeClient();
   const deadline = Date.now() + 25_000;
   let used = false;
   while (Date.now() < deadline) {
-    const res = await throttled(() =>
-      client.runMethod(verifierAddr, "nullifier_used?", [
-        { type: "int", value: expectedNullifier },
-      ]),
-    );
-    if (res.stack.readNumber() !== 0) {
+    if (await isNullifierUsed(client, expectedNullifier)) {
       used = true;
       break;
     }
