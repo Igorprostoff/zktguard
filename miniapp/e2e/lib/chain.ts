@@ -8,11 +8,7 @@
  */
 import { Address, TonClient } from "@ton/ton";
 
-// contracts/ is a CommonJS package; Node's ESM loader exposes CJS
-// modules through their default export only. Destructure off the
-// default to keep the call sites unchanged.
-import throttleModule from "../../../contracts/lib/throttle";
-const { throttled } = throttleModule;
+import { throttled } from "./throttle";
 import deployment from "../../../contracts/deployments/v0.2-testnet.json" with { type: "json" };
 
 export const VERIFIER_ADDR = Address.parse(deployment.verifier.address);

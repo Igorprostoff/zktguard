@@ -1,18 +1,18 @@
 /**
- * Shared rate-limit guardrail for the public toncenter testnet RPC.
+ * ESM mirror of `contracts/lib/throttle.ts`.
  *
- * The free tier is ~1 RPS. Every call routed through {@link throttled}
- * waits at least `RATE_DELAY_MS` after the previous one, retries on
- * HTTP 429 with exponential backoff, and gives up after `MAX_RETRIES`.
+ * Reason for duplication: `contracts/` is a CommonJS package (no
+ * `type: module`; ts-jest + blueprint need CJS). The Playwright
+ * runtime in `miniapp/e2e/` is ESM. Node's loader either rejects the
+ * CJS module's named exports or — once a `default` is added — runs it
+ * as ESM under a CJS package context and chokes on the `export`
+ * keyword. The simplest robust fix is to keep two independent copies,
+ * one per module system, and a comment reminding both ends to stay in
+ * sync. The implementation is 30 lines and effectively never changes.
  *
- * Used by:
- *   - `contracts/scripts/deployTestnet.ts`
- *   - `contracts/scripts/sanityCheckTestnet.ts`
- *
- * The Playwright e2e suite cannot import this file directly because
- * `contracts/` is a CommonJS package and the e2e workspace is ESM;
- * see `miniapp/e2e/lib/throttle.ts` for the intentionally-identical
- * ESM mirror. Edit both ends in lockstep.
+ * If you edit this file, mirror the same edit in
+ * `contracts/lib/throttle.ts`. The two are intentionally identical
+ * except for this header.
  *
  * Tunables (env, all optional):
  *   RATE_DELAY_MS     default 1500
@@ -94,4 +94,3 @@ export function throttled<T>(
 export function resetThrottleChainForTests(): void {
   throttleChain = Promise.resolve();
 }
-

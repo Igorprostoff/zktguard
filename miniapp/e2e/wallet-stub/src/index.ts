@@ -31,11 +31,11 @@ import {
 } from "@ton/ton";
 import { mnemonicToPrivateKey, KeyPair } from "@ton/crypto";
 
-// contracts/ is a CommonJS package; Node's ESM loader exposes CJS
-// modules through their default export only. Destructure off the
-// default to keep the call sites unchanged.
-import throttleModule from "../../../../contracts/lib/throttle";
-const { throttled } = throttleModule;
+// Use the ESM mirror in miniapp/e2e/lib/throttle.ts. The original
+// contracts/lib/throttle.ts is CommonJS-shaped and Playwright's
+// loader cannot consume it from this ESM package. The two files are
+// intentionally identical; if you edit one, mirror the other.
+import { throttled } from "../../lib/throttle";
 
 const TESTNET_ENDPOINT = "https://testnet.toncenter.com/api/v2/jsonRPC";
 
