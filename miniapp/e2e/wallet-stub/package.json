@@ -1,0 +1,23 @@
+{
+  "name": "@zktguard/wallet-stub",
+  "version": "0.0.0",
+  "private": true,
+  "description": "TON Connect test stub. Signs transactions with a hardcoded testnet seed; never opens a UI; used only in the Playwright e2e suite.",
+  "license": "MIT",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "lint": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@ton/core": "^0.62.0",
+    "@ton/crypto": "^3.3.0",
+    "@ton/ton": "^15.4.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.0",
+    "typescript": "^5.4.5",
+    "vitest": "^1.6.0"
+  }
+}

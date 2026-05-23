@@ -6,3 +6,4 @@ packages:
   - "docs"
   - "examples/*"
   - "prover/server"
+  - "miniapp/e2e/wallet-stub"
