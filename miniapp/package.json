@@ -8,7 +8,8 @@
     "build": "vite build",
     "dev": "vite",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "node scripts/run-e2e.cjs"
   },
   "dependencies": {
     "@tonconnect/ui-react": "^2.0.9",
