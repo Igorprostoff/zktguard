@@ -129,6 +129,22 @@ combination using two \texttt{BLS\_G1\_MULTIEXP} calls joined by
 \texttt{BLS\_G1\_ADD}, and invokes \texttt{BLS\_PAIRING} for the
 four-pair check.
 
+\subsection{End-to-end verification on testnet}
+
+A Playwright suite in \texttt{miniapp/e2e/} drives the Mini App
+against the live Phase~D1 deployment under a sandbox wallet stub
+that signs with a hardcoded testnet seed and broadcasts via
+\texttt{@ton/ton}'s \texttt{TonClient}. Four scenarios run:
+\texttt{happy-path} (connect, prove, mint, nullifier recorded);
+\texttt{expired-proof} (verifier rejects with exit~403 before the
+pairing check); \texttt{replayed-nullifier} (second submission of
+the same Poseidon hash rejected with exit~402 on registry reply);
+and \texttt{unregistered-app} (verifier parks, registry replies
+\texttt{is\_registered=false}, parked entry dropped, no mint). The
+suite is wired into a separate GitHub Actions workflow,
+\texttt{e2e-testnet}, that runs on \texttt{main} and on \texttt{v*}
+tag pushes; it is the gate on release tagging.
+
 \section{Evaluation}\label{sec:eval}
 
 Sandbox numbers from \texttt{@ton/sandbox} v0.32 on \texttt{@ton/core}
