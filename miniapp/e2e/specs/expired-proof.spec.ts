@@ -15,8 +15,12 @@
  */
 import * as fs from "node:fs";
 import * as path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { buildVerifierMessageBody } from "@zktguard/sdk";
+
+// ESM has no implicit __dirname; derive it from import.meta.url.
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 import { test, expect } from "../fixtures";
 import {
