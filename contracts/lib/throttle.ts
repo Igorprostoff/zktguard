@@ -22,9 +22,15 @@ export interface ThrottleConfig {
   maxRetries?: number;
 }
 
-const DEFAULT_RATE_DELAY_MS = Number(process.env.RATE_DELAY_MS ?? 1_500);
-const DEFAULT_RETRY_BACKOFF_MS = Number(process.env.RETRY_BACKOFF_MS ?? 20_000);
-const DEFAULT_MAX_RETRIES = Number(process.env.MAX_RETRIES ?? 5);
+// Defaults are read at call time (not module load) so test code can
+// mutate process.env between cases without re-importing.
+function defaults(): Required<ThrottleConfig> {
+  return {
+    rateDelayMs: Number(process.env.RATE_DELAY_MS ?? 1_500),
+    retryBackoffMs: Number(process.env.RETRY_BACKOFF_MS ?? 20_000),
+    maxRetries: Number(process.env.MAX_RETRIES ?? 5),
+  };
+}
 
 let throttleChain: Promise<unknown> = Promise.resolve();
 
@@ -47,9 +53,10 @@ export function throttled<T>(
   fn: () => Promise<T>,
   config: ThrottleConfig = {},
 ): Promise<T> {
-  const rateDelay = config.rateDelayMs ?? DEFAULT_RATE_DELAY_MS;
-  const retryBackoff = config.retryBackoffMs ?? DEFAULT_RETRY_BACKOFF_MS;
-  const maxRetries = config.maxRetries ?? DEFAULT_MAX_RETRIES;
+  const d = defaults();
+  const rateDelay = config.rateDelayMs ?? d.rateDelayMs;
+  const retryBackoff = config.retryBackoffMs ?? d.retryBackoffMs;
+  const maxRetries = config.maxRetries ?? d.maxRetries;
 
   const next = throttleChain.then(async () => {
     await sleep(rateDelay);
