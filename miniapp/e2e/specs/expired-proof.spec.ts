@@ -29,7 +29,7 @@ import {
   isParked,
   latestTxMarker,
   makeClient,
-  waitForNewTxs,
+  waitForTxMatching,
 } from "../lib/chain";
 
 interface Fixture {
@@ -54,7 +54,7 @@ test("verifier rejects a proof with an expiration in the past", async ({
   app,
   walletStub,
 }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
   await app.connectWallet();
 
   const fixture = JSON.parse(fs.readFileSync(FIXTURE_PATH, "utf8")) as Fixture;
@@ -86,10 +86,17 @@ test("verifier rejects a proof with an expiration in the past", async ({
     ],
   });
 
-  const fresh = await waitForNewTxs(client, VERIFIER_ADDR, baseline, 45_000);
-  expect(fresh.length).toBeGreaterThan(0);
+  const fresh = await waitForTxMatching(
+    client,
+    VERIFIER_ADDR,
+    baseline,
+    (t) => t.exitCode === 403,
+    90_000,
+  );
   const exitCodes = fresh.map((t) => t.exitCode);
-  expect(exitCodes).toContain(403);
+  expect(exitCodes, `verifier txs: ${JSON.stringify(exitCodes)}`).toContain(
+    403,
+  );
 
   // Pre-pairing reject means no parked entry was written.
   expect(await isParked(client, queryId)).toBe(false);

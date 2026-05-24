@@ -31,15 +31,17 @@ test("user verifies a valid claim and receives a soulbound credential", async ({
   app,
   page,
 }) => {
-  test.setTimeout(90_000);
+  // Cold-start snarkjs loads the zkey on the first /prove (~10-20 s)
+  // and toncenter's free tier adds 30-60 s between submit and mint.
+  // Give the whole flow 4 min so the prover's first-request warmup
+  // doesn't push us past budget.
+  test.setTimeout(240_000);
 
   await app.connectWallet();
   await app.clickVerify();
 
-  // The Mini App walks idle → attesting → proving → submitting → done.
-  // We only assert the terminal "done" because the intermediate stages
-  // flash too fast for `toHaveText` polling at 100 ms.
-  await app.waitForStatus("done", 60_000);
+  // Mini App walks idle → attesting → proving → submitting → done.
+  await app.waitForStatus("done", 180_000);
 
   const lastClaim = (await page.evaluate(
     () =>
@@ -55,11 +57,10 @@ test("user verifies a valid claim and receives a soulbound credential", async ({
   expect(uiNullifier).toMatch(/^0x[0-9a-f]+$/);
   expect(BigInt(uiNullifier)).toBe(proofNullifier);
 
-  // Now confirm the chain has recorded the mint. The verifier mints
-  // only after the registry replies; we poll for up to ~25 s, leaving
-  // headroom inside the 90 s budget.
+  // Confirm the on-chain mint. Verifier mints only after the registry
+  // replies; allow 45 s for that async hop.
   const client = makeClient();
-  const deadline = Date.now() + 25_000;
+  const deadline = Date.now() + 45_000;
   let used = false;
   while (Date.now() < deadline) {
     if (await isNullifierUsed(client, proofNullifier)) {
