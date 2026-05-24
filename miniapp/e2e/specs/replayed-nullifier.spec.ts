@@ -139,6 +139,7 @@ async function pollUntilUsed(
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     if (await isNullifierUsed(client, nf)) return true;
+    await new Promise((r) => setTimeout(r, 5_000));
   }
   return false;
 }

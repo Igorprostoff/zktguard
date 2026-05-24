@@ -58,15 +58,17 @@ test("user verifies a valid claim and receives a soulbound credential", async ({
   expect(BigInt(uiNullifier)).toBe(proofNullifier);
 
   // Confirm the on-chain mint. Verifier mints only after the registry
-  // replies; allow 45 s for that async hop.
+  // replies; allow 90 s for that async hop, polling every 5 s to stay
+  // under the free-tier toncenter rate limit.
   const client = makeClient();
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 90_000;
   let used = false;
   while (Date.now() < deadline) {
     if (await isNullifierUsed(client, proofNullifier)) {
       used = true;
       break;
     }
+    await new Promise((r) => setTimeout(r, 5_000));
   }
   expect(used).toBe(true);
 });

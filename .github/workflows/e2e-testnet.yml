@@ -31,13 +31,15 @@ jobs:
     env:
       WALLET_STUB_MNEMONIC: ${{ secrets.WALLET_STUB_MNEMONIC }}
       TONCENTER_API_KEY: ${{ secrets.TONCENTER_API_KEY }}
-      # Throttle tuning for the suite: tighter than the deploy-time
-      # defaults so a transient 5xx doesn't consume a spec's whole
-      # budget. Workflow time still dominated by Vite + Playwright
-      # browser load + the sequential nature of the four scenarios.
-      RATE_DELAY_MS: "1500"
+      # Throttle tuning for the suite. The free-tier toncenter
+      # endpoint rate-limits aggressively (~1 RPS) and returns 429/
+      # 5xx waves once exceeded. Pace below 0.5 RPS with 5 retries
+      # so transient 5xx survives without consuming a spec's budget.
+      # If TONCENTER_API_KEY is set, paced calls stay well under any
+      # paid-tier cap; if not, the headroom prevents lockouts.
+      RATE_DELAY_MS: "3000"
       RETRY_BACKOFF_MS: "5000"
-      MAX_RETRIES: "3"
+      MAX_RETRIES: "5"
     steps:
       - uses: actions/checkout@v4
 
