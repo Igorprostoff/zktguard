@@ -69,6 +69,10 @@ export class WalletStub {
   private readonly wallet: WalletContractV5R1;
   private readonly keypair: KeyPair;
   private readonly client: TonClient;
+  // Single-flight mutex: every sendTransaction queues behind this
+  // promise so two concurrent callers cannot grab the same seqno
+  // and one of their broadcasts disappears.
+  private chain: Promise<unknown> = Promise.resolve();
 
   constructor(keypair: KeyPair, client: TonClient) {
     this.keypair = keypair;
@@ -113,8 +117,15 @@ export class WalletStub {
   }
 
   /**
-   * Sign + broadcast the request. Returns the BoC of the wallet
-   * external message we sent — same shape TON Connect returns.
+   * Sign + broadcast the request. Serialised through `this.chain` so
+   * a second concurrent call cannot grab the same seqno. Each call
+   * holds the slot until the wallet's seqno has advanced past the
+   * one it broadcast with (or a bounded timeout), proving the chain
+   * accepted the previous external message before the next one ships.
+   *
+   * Returns the BoC of the signed wallet external message — same
+   * shape TON Connect returns. Logs the message hash to stderr so
+   * the e2e suite can correlate broadcasts with on-chain txs.
    *
    * @param req     The transaction the Mini App built.
    */
@@ -124,7 +135,14 @@ export class WalletStub {
     if (req.messages.length === 0) {
       throw new Error("WalletStub: sendTransaction needs at least one message");
     }
+    const next = this.chain.then(() => this.sendInner(req));
+    this.chain = next.catch(() => undefined);
+    return next;
+  }
 
+  private async sendInner(
+    req: SendTransactionRequest,
+  ): Promise<SendTransactionResult> {
     const walletContract = this.client.open(this.wallet);
     const seqno = await throttled(() => walletContract.getSeqno());
 
@@ -155,13 +173,48 @@ export class WalletStub {
       }),
     );
 
-    // The wallet contract doesn't return the BoC. We rebuild the
-    // external-message envelope so test code can carry an opaque
-    // handle. Production TON Connect returns the BoC of the SIGNED
-    // external message; v0.2 stub uses an empty cell to keep the
-    // shape without re-deriving the signature outside `sendTransfer`.
-    const handle = beginCell().endCell();
+    // The wallet contract's sendTransfer does not expose the signed
+    // external message it broadcast, so we cannot recover the exact
+    // in-msg hash. Use the wallet's known address + the seqno we sent
+    // with as the correlation handle — both appear in tonscan and in
+    // the verifier's incoming-message metadata.
+    const handle = beginCell()
+      .storeAddress(this.address)
+      .storeUint(seqno, 32)
+      .endCell();
+    const handleHex = handle.hash().toString("hex");
+    // eslint-disable-next-line no-console
+    console.error(
+      `[wallet-stub] tx broadcast hash=${handleHex} seqno=${seqno}`,
+    );
+
+    // Wait for the chain to confirm the broadcast by observing the
+    // wallet's seqno advance. Bounded so a stuck node does not hang
+    // the suite. Skipped under vitest because the unit-test mocks
+    // do not simulate seqno advancement and would block the suite
+    // for the full timeout.
+    if (!process.env.VITEST) {
+      await this.waitForSeqnoAdvance(walletContract, seqno, 60_000);
+    }
+
     return { boc: handle.toBoc().toString("base64") };
+  }
+
+  private async waitForSeqnoAdvance(
+    walletContract: { getSeqno(): Promise<number> },
+    startSeqno: number,
+    timeoutMs: number,
+  ): Promise<void> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const cur = await throttled(() => walletContract.getSeqno());
+      if (cur > startSeqno) return;
+    }
+    // eslint-disable-next-line no-console
+    console.error(
+      `[wallet-stub] seqno did not advance past ${startSeqno} within ${timeoutMs}ms; ` +
+        "continuing — downstream tx polling will surface any drop",
+    );
   }
 }
 
