@@ -69,6 +69,10 @@ jobs:
       - name: Bring up off-chain stack
         run: docker compose -f infra/docker-compose.yml up -d --wait --wait-timeout 300
 
+      - name: Dump compose logs (always)
+        if: always()
+        run: docker compose -f infra/docker-compose.yml logs --tail=200 --timestamps || true
+
       - name: Verify off-chain endpoints are reachable from the host
         run: |
           set -e
