@@ -67,22 +67,23 @@ services:
 
   prover-server:
     image: node:20-bookworm
-    working_dir: /repo/prover/server
+    working_dir: /app
     volumes:
       - ..:/repo:ro
-      - prover-node-modules:/repo/prover/server/node_modules
+      - prover-node-modules:/app/node_modules
     environment:
       ADDR: "0.0.0.0"
       PORT: "7679"
       WASM_PATH: "/repo/circuits/build/circuit_js/circuit.wasm"
       PKEY_PATH: "/repo/circuits/build/account_age_pkey.zkey"
-    # The repo is mounted :ro, so pnpm cannot write the workspace
-    # temp file it normally creates at the workspace root. Use
-    # --ignore-workspace to make pnpm treat prover/server as a
-    # standalone package; its only deps are external (@noble/curves,
-    # snarkjs) so the workspace context is not needed.
+    # The repo is mounted :ro, so pnpm cannot write its temp files
+    # anywhere inside /repo. Copy the server source to a writable
+    # /app on container start, then install + run there. wasm/zkey
+    # paths stay pointed at /repo since those are read-only assets.
     command: >
       sh -c "
+      cp -r /repo/prover/server/. /app/ &&
+      cd /app &&
       corepack enable && corepack prepare pnpm@9 --activate &&
       pnpm install --prod --ignore-workspace &&
       pnpm start
