@@ -76,10 +76,15 @@ services:
       PORT: "7679"
       WASM_PATH: "/repo/circuits/build/circuit_js/circuit.wasm"
       PKEY_PATH: "/repo/circuits/build/account_age_pkey.zkey"
+    # The repo is mounted :ro, so pnpm cannot write the workspace
+    # temp file it normally creates at the workspace root. Use
+    # --ignore-workspace to make pnpm treat prover/server as a
+    # standalone package; its only deps are external (@noble/curves,
+    # snarkjs) so the workspace context is not needed.
     command: >
       sh -c "
       corepack enable && corepack prepare pnpm@9 --activate &&
-      pnpm install --prod &&
+      pnpm install --prod --ignore-workspace &&
       pnpm start
       "
     ports:
