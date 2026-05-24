@@ -49,6 +49,41 @@ export interface FreshTx {
   exitCode: number | null;
   lt: bigint;
   hashHex: string;
+  /** Normalised source address of the inMessage (or null for
+   *  external messages). Use {@link addrsEqual} or {@link normalizeAddr}
+   *  to compare against another address; never string-compare raw,
+   *  because toncenter may report `0Q…` while the stub holds `kQ…`. */
+  senderNorm: string | null;
+}
+
+/**
+ * Canonical user-friendly form of a TON address for comparison.
+ *
+ * The bounce-flag and url-safe encodings produce visibly different
+ * strings for the same underlying account (`kQ…` vs `0Q…` vs
+ * `EQ…`/`UQ…`), and toncenter returns whichever the indexer happens
+ * to hold. Comparing the raw strings is a footgun; comparing the
+ * output of this helper is safe.
+ */
+export function normalizeAddr(addr: Address | string): string {
+  const a = typeof addr === "string" ? Address.parse(addr) : addr;
+  return a.toString({ urlSafe: true, bounceable: false, testOnly: true });
+}
+
+/** Equality on addresses regardless of bounce-flag or url-safe encoding. */
+export function addrsEqual(
+  a: Address | string,
+  b: Address | string,
+): boolean {
+  return normalizeAddr(a) === normalizeAddr(b);
+}
+
+function extractSender(t: import("@ton/core").Transaction): string | null {
+  const inMsg = t.inMessage;
+  if (!inMsg) return null;
+  const info = inMsg.info;
+  if (info.type !== "internal") return null;
+  return normalizeAddr(info.src);
 }
 
 async function listFresh(
@@ -74,6 +109,7 @@ async function listFresh(
       exitCode: extractExitCode(t),
       lt: t.lt,
       hashHex: t.hash().toString("hex"),
+      senderNorm: extractSender(t),
     }));
 }
 
