@@ -45,7 +45,7 @@ services:
       sh -c "
       if [ ! -f /keys/attestor.hex ]; then
         mkdir -p /keys &&
-        head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /keys/attestor.hex &&
+        od -An -vtx1 -N 32 /dev/urandom | tr -dc 'a-f0-9' > /keys/attestor.hex &&
         chmod 0600 /keys/attestor.hex;
       fi &&
       go run ./cmd/zktguard-attestor --addr 0.0.0.0:7677 --upstream http://stub:7676 --key /keys/attestor.hex
