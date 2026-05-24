@@ -77,6 +77,15 @@ async function listFresh(
     }));
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+// Wall-clock pacing between poll iterations, on top of the throttle's
+// per-RPC delay. Each iteration makes 1-2 RPC calls, so this caps
+// poll work at ~0.2 RPS per loop without starving the throttle.
+const POLL_INTERVAL_MS = 5_000;
+
 /**
  * Poll `addr` for transactions newer than `since` until at least one
  * arrives or `timeoutMs` elapses. Returns the new transactions in
@@ -92,6 +101,7 @@ export async function waitForNewTxs(
   while (Date.now() < deadline) {
     const fresh = await listFresh(client, addr, since);
     if (fresh.length > 0) return fresh;
+    await sleep(POLL_INTERVAL_MS);
   }
   return [];
 }
@@ -121,6 +131,7 @@ export async function waitForTxMatching(
         if (predicate(t)) return seen;
       }
     }
+    await sleep(POLL_INTERVAL_MS);
   }
   return seen;
 }

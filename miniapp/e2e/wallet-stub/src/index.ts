@@ -209,6 +209,11 @@ export class WalletStub {
     while (Date.now() < deadline) {
       const cur = await throttled(() => walletContract.getSeqno());
       if (cur > startSeqno) return;
+      // Wall-clock pacing between polls on top of the throttle's
+      // per-RPC delay. Without this, the seqno-wait races toncenter
+      // far faster than chain settlement and burns through the
+      // rate-limit budget the other specs need.
+      await new Promise((r) => setTimeout(r, 5_000));
     }
     // eslint-disable-next-line no-console
     console.error(

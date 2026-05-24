@@ -100,10 +100,11 @@ test("verifier rejects a proof for an unregistered app_id", async ({
 
   // Second wave: the registry replied negative, the verifier dropped
   // the parked entry. Poll the parked_entry getter until it goes
-  // empty, within budget.
-  const deadline = Date.now() + 60_000;
+  // empty, within budget. 5 s pacing to stay under rate limit.
+  const deadline = Date.now() + 90_000;
   let stillParked = await isParked(client, queryId);
   while (stillParked && Date.now() < deadline) {
+    await new Promise((r) => setTimeout(r, 5_000));
     stillParked = await isParked(client, queryId);
   }
   expect(stillParked).toBe(false);
