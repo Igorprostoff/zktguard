@@ -94,7 +94,9 @@ services:
       attestor:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "wget --spider -q http://127.0.0.1:7679/health || exit 1"]
+      # wget --spider issues HEAD only; the prover handler answers GET
+      # /health. Use wget -O - to force GET (discard body).
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:7679/health > /dev/null || exit 1"]
       interval: 5s
       timeout: 2s
       # pnpm install --prod cold-start can take ~60s on a clean
