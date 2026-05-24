@@ -159,6 +159,30 @@ export class WalletStub {
     const walletContract = this.client.open(this.wallet);
     const seqno = await throttled(() => walletContract.getSeqno());
 
+    // Log the incoming request before we touch it. payload_b64 is
+    // what the Mini App handed us; payload_hex_first_32 is the first
+    // 32 hex chars of the decoded BoC bytes so the verifier op code
+    // (first 32 bits = 8 hex chars after the BoC magic header) is
+    // visible at a glance.
+    for (const m of req.messages) {
+      const payloadB64 = m.payload ?? "";
+      let payloadHex = "";
+      if (m.payload) {
+        try {
+          payloadHex = Buffer.from(m.payload, "base64")
+            .toString("hex")
+            .slice(0, 32);
+        } catch {
+          payloadHex = "<decode-error>";
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.error(
+        `[wallet-stub] request dest=${m.address} amount=${m.amount} ` +
+          `payload_b64=${payloadB64} payload_hex_first_32=${payloadHex}`,
+      );
+    }
+
     const messages = req.messages.map((m) => {
       const to = Address.parse(m.address);
       const value = BigInt(m.amount);
@@ -185,6 +209,24 @@ export class WalletStub {
         messages,
       }),
     );
+
+    // Confirm the actual destinations that landed on the constructed
+    // internal messages — proves we didn't silently rewrite the
+    // address en route and surfaces the workchain + bounce-flag the
+    // chain will see.
+    for (const m of messages) {
+      const dest = m.info.dest;
+      const destStr =
+        dest && typeof dest === "object" && "toString" in dest
+          ? dest.toString({ testOnly: true, bounceable: true })
+          : String(dest);
+      const value =
+        m.info.type === "internal" ? m.info.value.coins.toString() : "n/a";
+      // eslint-disable-next-line no-console
+      console.error(
+        `[wallet-stub] broadcast dest=${destStr} value=${value}`,
+      );
+    }
 
     // The wallet contract's sendTransfer does not expose the signed
     // external message it broadcast, so we cannot recover the exact
