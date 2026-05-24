@@ -99,7 +99,11 @@ export class WalletStub {
     const keypair = await mnemonicToPrivateKey(words);
     const client = new TonClient({
       endpoint: config.endpoint ?? TESTNET_ENDPOINT,
-      apiKey: config.apiKey,
+      // Fall back to the env var so the CI workflow's
+      // TONCENTER_API_KEY reaches the broadcast path; without this,
+      // every wallet RPC went through the free-tier limit and the
+      // suite drowned in 429/5xx waves.
+      apiKey: config.apiKey ?? process.env.TONCENTER_API_KEY,
     });
     return new WalletStub(keypair, client);
   }
