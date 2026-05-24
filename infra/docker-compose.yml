@@ -52,7 +52,11 @@ services:
       test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:7677/health"]
       interval: 5s
       timeout: 2s
+      # `go run` cold-compiles on first start (~30-60s on a clean
+      # alpine), so don't count healthcheck failures during that
+      # window against the container.
       retries: 24
+      start_period: 60s
 
   prover-server:
     image: node:20-bookworm
