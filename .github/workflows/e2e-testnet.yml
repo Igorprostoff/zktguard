@@ -100,6 +100,10 @@ jobs:
       - name: Run Playwright suite
         run: pnpm --filter @zktguard/miniapp test:e2e
 
+      - name: Dump verifier + stub-wallet tx state (diagnostic)
+        if: always()
+        run: node miniapp/e2e/scripts/dump-tx-state.mjs || true
+
       - name: Upload Playwright report
         if: always()
         uses: actions/upload-artifact@v4
