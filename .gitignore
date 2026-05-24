@@ -31,6 +31,10 @@ vendor/
 *.sym
 witness*.json
 proof.json
+# Exceptions: the committed proving key + wasm pair with the
+# deployed verifier. See circuits/.gitignore for the why.
+!circuits/build/account_age_pkey.zkey
+!circuits/build/circuit_js/circuit.wasm
 
 # FunC / TON build outputs
 *.fif

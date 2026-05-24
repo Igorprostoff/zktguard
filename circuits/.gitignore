@@ -8,4 +8,13 @@ build/
 *.zkey
 *.ptau
 *_js/
+
+# Exceptions (force-added with `git add -f`, then stay tracked):
+#   build/account_age_pkey.zkey
+#   build/circuit_js/circuit.wasm
+# Both pair with the deployed verifier (verification_key.json,
+# committed in account_age/). The Phase-1 PoT is non-deterministic
+# across machines, so CI cannot rebuild these without breaking the
+# deployed VK.
+
 # verification_key.json is committed at account_age/verification_key.json
