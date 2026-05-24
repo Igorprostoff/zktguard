@@ -105,7 +105,16 @@ export class WalletStub {
       // suite drowned in 429/5xx waves.
       apiKey: config.apiKey ?? process.env.TONCENTER_API_KEY,
     });
-    return new WalletStub(keypair, client);
+    const stub = new WalletStub(keypair, client);
+    // Surface the wallet address + api-key presence at startup so a
+    // failing CI run lets the operator check the balance and tx
+    // history directly on tonscan.
+    // eslint-disable-next-line no-console
+    console.error(
+      `[wallet-stub] init address=${stub.address.toString({ testOnly: true, bounceable: true })} ` +
+        `apiKey=${config.apiKey || process.env.TONCENTER_API_KEY ? "set" : "MISSING"}`,
+    );
+    return stub;
   }
 
   /**
