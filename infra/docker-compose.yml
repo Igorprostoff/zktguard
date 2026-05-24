@@ -85,7 +85,7 @@ services:
       cp -r /repo/prover/server/. /app/ &&
       cd /app &&
       corepack enable && corepack prepare pnpm@9 --activate &&
-      pnpm install --prod --ignore-workspace &&
+      pnpm install --ignore-workspace &&
       pnpm start
       "
     ports:
