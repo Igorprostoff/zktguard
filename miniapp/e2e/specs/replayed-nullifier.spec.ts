@@ -30,7 +30,7 @@ import {
   isNullifierUsed,
   latestTxMarker,
   makeClient,
-  waitForNewTxs,
+  waitForTxMatching,
 } from "../lib/chain";
 
 // Sacrificed to testnet for D4. Never reuse outside this spec.
@@ -47,7 +47,7 @@ test("verifier rejects a proof whose nullifier has already been used", async ({
   walletStub,
   setClaimOverride,
 }) => {
-  test.setTimeout(180_000);
+  test.setTimeout(300_000);
 
   await setClaimOverride({ userSecret: SACRIFICED_USER_SECRET });
   await app.goto();
@@ -108,12 +108,22 @@ test("verifier rejects a proof whose nullifier has already been used", async ({
     ],
   });
 
-  // The verifier parks valid proofs first, then rejects with 402 on
-  // the registry reply once reuse is detected. Poll for up to ~90 s.
-  const fresh = await waitForNewTxs(client, VERIFIER_ADDR, baseline, 90_000);
-  expect(fresh.length).toBeGreaterThan(0);
+  // The verifier parks valid proofs first (exit 0), then rejects
+  // with 402 on the registry reply once reuse is detected. Poll
+  // until the 402 lands or 120 s elapses; the parking tx and the
+  // reply-handling tx are separate transactions ~30-60 s apart on
+  // testnet free tier.
+  const fresh = await waitForTxMatching(
+    client,
+    VERIFIER_ADDR,
+    baseline,
+    (t) => t.exitCode === 402,
+    120_000,
+  );
   const exitCodes = fresh.map((t) => t.exitCode);
-  expect(exitCodes).toContain(402);
+  expect(exitCodes, `verifier txs: ${JSON.stringify(exitCodes)}`).toContain(
+    402,
+  );
 
   // Nullifier still recorded exactly once (no double-mint). The
   // collection lacks a getter that would let us count items per

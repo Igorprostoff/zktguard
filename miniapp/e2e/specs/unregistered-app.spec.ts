@@ -38,7 +38,7 @@ test("verifier rejects a proof for an unregistered app_id", async ({
   walletStub,
   userSecret,
 }) => {
-  test.setTimeout(120_000);
+  test.setTimeout(240_000);
   await app.connectWallet();
 
   // We bypass the Mini App: the App config only knows about app_id=1.
@@ -85,27 +85,23 @@ test("verifier rejects a proof for an unregistered app_id", async ({
     client,
     VERIFIER_ADDR,
     verifierBaseline,
-    60_000,
+    120_000,
   );
   expect(verifierFresh.length).toBeGreaterThan(0);
-  // The initial parking tx exits 0; later, the reply-handling tx
-  // exits 0 too (it drops the entry rather than throwing). The
-  // negative path is observable through `parked_entry` going from
-  // present → absent, plus the registry replying false.
   expect(verifierFresh[0].exitCode).toBe(0);
 
   const registryFresh = await waitForNewTxs(
     client,
     REGISTRY_ADDR,
     registryBaseline,
-    60_000,
+    120_000,
   );
   expect(registryFresh.length).toBeGreaterThan(0);
 
   // Second wave: the registry replied negative, the verifier dropped
   // the parked entry. Poll the parked_entry getter until it goes
   // empty, within budget.
-  const deadline = Date.now() + 45_000;
+  const deadline = Date.now() + 60_000;
   let stillParked = await isParked(client, queryId);
   while (stillParked && Date.now() < deadline) {
     stillParked = await isParked(client, queryId);

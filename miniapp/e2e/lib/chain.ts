@@ -45,6 +45,38 @@ export async function latestTxMarker(
   };
 }
 
+export interface FreshTx {
+  exitCode: number | null;
+  lt: bigint;
+  hashHex: string;
+}
+
+async function listFresh(
+  client: TonClient,
+  addr: Address,
+  since: TxMarker | null,
+): Promise<FreshTx[]> {
+  const state = await throttled(() => client.getContractState(addr));
+  if (!state.lastTransaction) return [];
+  const lt = BigInt(state.lastTransaction.lt);
+  if (since !== null && lt <= since.lt) return [];
+  const txs = await throttled(() =>
+    client.getTransactions(addr, {
+      limit: 20,
+      lt: state.lastTransaction!.lt,
+      hash: state.lastTransaction!.hash,
+    }),
+  );
+  return txs
+    .filter((t) => since === null || t.lt > since.lt)
+    .reverse()
+    .map((t) => ({
+      exitCode: extractExitCode(t),
+      lt: t.lt,
+      hashHex: t.hash().toString("hex"),
+    }));
+}
+
 /**
  * Poll `addr` for transactions newer than `since` until at least one
  * arrives or `timeoutMs` elapses. Returns the new transactions in
@@ -55,37 +87,42 @@ export async function waitForNewTxs(
   addr: Address,
   since: TxMarker | null,
   timeoutMs: number,
-): Promise<
-  Array<{
-    exitCode: number | null;
-    lt: bigint;
-    hashHex: string;
-  }>
-> {
+): Promise<FreshTx[]> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const state = await throttled(() => client.getContractState(addr));
-    if (!state.lastTransaction) continue;
-    const lt = BigInt(state.lastTransaction.lt);
-    if (since !== null && lt <= since.lt) continue;
-    const txs = await throttled(() =>
-      client.getTransactions(addr, {
-        limit: 20,
-        lt: state.lastTransaction!.lt,
-        hash: state.lastTransaction!.hash,
-      }),
-    );
-    const fresh = txs
-      .filter((t) => since === null || t.lt > since.lt)
-      .reverse()
-      .map((t) => ({
-        exitCode: extractExitCode(t),
-        lt: t.lt,
-        hashHex: t.hash().toString("hex"),
-      }));
+    const fresh = await listFresh(client, addr, since);
     if (fresh.length > 0) return fresh;
   }
   return [];
+}
+
+/**
+ * Poll `addr` until a transaction matching `predicate` lands, returning
+ * every fresh transaction seen along the way. Useful when the verifier
+ * parks a proof (exit 0) before the actual reject lands on a later
+ * tx in the same async flow.
+ */
+export async function waitForTxMatching(
+  client: TonClient,
+  addr: Address,
+  since: TxMarker | null,
+  predicate: (t: FreshTx) => boolean,
+  timeoutMs: number,
+): Promise<FreshTx[]> {
+  const deadline = Date.now() + timeoutMs;
+  const seen: FreshTx[] = [];
+  const seenHashes = new Set<string>();
+  while (Date.now() < deadline) {
+    const fresh = await listFresh(client, addr, since);
+    for (const t of fresh) {
+      if (!seenHashes.has(t.hashHex)) {
+        seenHashes.add(t.hashHex);
+        seen.push(t);
+        if (predicate(t)) return seen;
+      }
+    }
+  }
+  return seen;
 }
 
 function extractExitCode(t: import("@ton/core").Transaction): number | null {
