@@ -38,9 +38,16 @@ services:
     volumes:
       - ../attestor:/work:ro
       - attestor-keys:/keys:rw
+    # The key-gen script uses bash + xxd; golang:1.22-alpine has
+    # neither. Inline a busybox-only equivalent that writes 32 random
+    # bytes as 64 hex chars (matching gen_attestor_key.sh's output).
     command: >
       sh -c "
-      [ -f /keys/attestor.hex ] || (cd /work && bash scripts/gen_attestor_key.sh /keys/attestor.hex);
+      if [ ! -f /keys/attestor.hex ]; then
+        mkdir -p /keys &&
+        head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n' > /keys/attestor.hex &&
+        chmod 0600 /keys/attestor.hex;
+      fi &&
       go run ./cmd/zktguard-attestor --addr 0.0.0.0:7677 --upstream http://stub:7676 --key /keys/attestor.hex
       "
     depends_on:
