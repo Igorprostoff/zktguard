@@ -38,7 +38,12 @@ jobs:
       # If TONCENTER_API_KEY is set, paced calls stay well under any
       # paid-tier cap; if not, the headroom prevents lockouts.
       RATE_DELAY_MS: "3000"
-      RETRY_BACKOFF_MS: "5000"
+      # RETRY_BACKOFF_MS=5000 with MAX_RETRIES=5 gives a worst-case
+      # single-call cost of 5+10+20+40+80=155 s, which blows past
+      # expired-proof's 120 s window before a single poll completes.
+      # 2000 ms base with 5 retries = 2+4+8+16+32=62 s max — fits
+      # any spec budget while still surviving multi-minute outages.
+      RETRY_BACKOFF_MS: "2000"
       MAX_RETRIES: "5"
     steps:
       - uses: actions/checkout@v4
