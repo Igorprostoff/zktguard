@@ -39,6 +39,13 @@ import { throttled } from "../../lib/throttle";
 
 const TESTNET_ENDPOINT = "https://testnet.toncenter.com/api/v2/jsonRPC";
 
+// Minimum balance (in TON) the stub needs to attempt a run.
+// Each spec broadcasts a 0.5 TON value message; four specs plus
+// gas headroom needs ~3 TON. Below this, the v5R1 wallet accepts
+// the external-in (advancing seqno) but silently drops the inner
+// send for lack of funds — broadcasts vanish without an error.
+const MIN_BALANCE_TON = 3n;
+
 export interface StubConfig {
   mnemonic: string;
   endpoint?: string;
@@ -73,6 +80,10 @@ export class WalletStub {
   // promise so two concurrent callers cannot grab the same seqno
   // and one of their broadcasts disappears.
   private chain: Promise<unknown> = Promise.resolve();
+  // Set after the first sendTransaction confirms the wallet has
+  // enough TON for a full suite. Cached for process lifetime so
+  // subsequent broadcasts don't re-query.
+  private balanceChecked = false;
 
   constructor(keypair: KeyPair, client: TonClient) {
     this.keypair = keypair;
@@ -156,6 +167,7 @@ export class WalletStub {
   private async sendInner(
     req: SendTransactionRequest,
   ): Promise<SendTransactionResult> {
+    await this.ensureBalance();
     const walletContract = this.client.open(this.wallet);
     const seqno = await throttled(() => walletContract.getSeqno());
 
@@ -253,6 +265,44 @@ export class WalletStub {
     }
 
     return { boc: handle.toBoc().toString("base64") };
+  }
+
+  /**
+   * Lazy balance check that fires on the first sendTransaction.
+   * Below MIN_BALANCE_TON the v5R1 wallet swallows internal sends
+   * silently (external-in accepted, seqno advances, outMessagesCount
+   * stays 0); throwing here surfaces the operational issue as a
+   * clear failure instead of a downstream "verifier txs: []" loop.
+   *
+   * Skipped under vitest because the unit-test mocks override
+   * `client.open()` but not `client.getBalance()`, which would hit
+   * the invalid test endpoint and fail every unit case. The
+   * lazy-on-first-send shape exists so this skip has no effect on
+   * production startup.
+   */
+  private async ensureBalance(): Promise<void> {
+    if (this.balanceChecked) return;
+    if (process.env.VITEST) {
+      this.balanceChecked = true;
+      return;
+    }
+    const balanceNano = await throttled(() =>
+      this.client.getBalance(this.address),
+    );
+    const minNano = MIN_BALANCE_TON * 1_000_000_000n;
+    if (balanceNano < minNano) {
+      const balanceTON = Number(balanceNano) / 1e9;
+      const addr = this.address.toString({
+        testOnly: true,
+        bounceable: true,
+      });
+      throw new Error(
+        `Wallet stub balance is ${balanceTON.toFixed(3)} TON ` +
+          `(address ${addr}). Need at least 3 TON to run the suite. ` +
+          `Top up at https://t.me/testgiver_ton_bot.`,
+      );
+    }
+    this.balanceChecked = true;
   }
 
   private async waitForSeqnoAdvance(
