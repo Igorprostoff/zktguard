@@ -91,16 +91,15 @@ async function listFresh(
   addr: Address,
   since: TxMarker | null,
 ): Promise<FreshTx[]> {
-  const state = await throttled(() => client.getContractState(addr));
-  if (!state.lastTransaction) return [];
-  const lt = BigInt(state.lastTransaction.lt);
-  if (since !== null && lt <= since.lt) return [];
+  // Query the latest 20 txs directly without anchoring to
+  // getContractState. The previous approach used getContractState to
+  // get lt/hash for the cursor; if toncenter caches that state between
+  // the parking tx and the registry-reply tx, subsequent polls query
+  // from the stale lt and never see the reply. The cursor-free call
+  // matches what the diagnostic script uses and always returns the
+  // true latest txs. The `since` filter still pins the window.
   const txs = await throttled(() =>
-    client.getTransactions(addr, {
-      limit: 20,
-      lt: state.lastTransaction!.lt,
-      hash: state.lastTransaction!.hash,
-    }),
+    client.getTransactions(addr, { limit: 20 }),
   );
   return txs
     .filter((t) => since === null || t.lt > since.lt)
