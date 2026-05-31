@@ -23,6 +23,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1, // testnet rate-limit makes parallelism counterproductive
   timeout: 240_000,
+  // One retry handles transient toncenter 500 waves that eat the
+  // polling window. The chain logic is correct; failures are timing-
+  // shaped, not code-shaped.
+  retries: isCI ? 1 : 0,
   forbidOnly: isCI,
   reporter: isCI
     ? [["github"], ["html", { open: "never", outputFolder: path.join(__dirname, "..", "..", "playwright-report") }]]
