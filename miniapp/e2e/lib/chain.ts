@@ -113,6 +113,27 @@ async function listFresh(
     }));
 }
 
+/**
+ * Wrap listFresh so a throttle-exhausted error (sustained toncenter
+ * 5xx wave) is treated as a transient empty result instead of
+ * killing the polling loop. The spec's own timeout still governs
+ * the overall wait.
+ */
+async function listFreshSafe(
+  client: TonClient,
+  addr: Address,
+  since: TxMarker | null,
+): Promise<FreshTx[]> {
+  try {
+    return await listFresh(client, addr, since);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    // eslint-disable-next-line no-console
+    console.error(`[chain] listFresh transient (will retry): ${msg}`);
+    return [];
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -135,7 +156,7 @@ export async function waitForNewTxs(
 ): Promise<FreshTx[]> {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
-    const fresh = await listFresh(client, addr, since);
+    const fresh = await listFreshSafe(client, addr, since);
     if (fresh.length > 0) return fresh;
     await sleep(POLL_INTERVAL_MS);
   }
@@ -159,7 +180,7 @@ export async function waitForTxMatching(
   const seen: FreshTx[] = [];
   const seenHashes = new Set<string>();
   while (Date.now() < deadline) {
-    const fresh = await listFresh(client, addr, since);
+    const fresh = await listFreshSafe(client, addr, since);
     for (const t of fresh) {
       if (!seenHashes.has(t.hashHex)) {
         seenHashes.add(t.hashHex);

@@ -118,7 +118,7 @@ test("verifier rejects a proof whose nullifier has already been used", async ({
     VERIFIER_ADDR,
     baseline,
     (t) => t.exitCode === 402,
-    120_000,
+    200_000,
   );
   const exitCodes = fresh.map((t) => t.exitCode);
   expect(exitCodes, `verifier txs: ${JSON.stringify(exitCodes)}`).toContain(
