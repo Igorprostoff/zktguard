@@ -6,6 +6,28 @@ follow SemVer.
 
 ## [Unreleased]
 
+### v0.2 Phase D4 closure — three consecutive green e2e runs
+
+D4 DoD satisfied on 2026-06-02: three consecutive `e2e-testnet`
+workflow runs (26838532014, 26838809264, 26839087733) each returned
+4/4 in ≈ 2.1 minutes. The only remaining v0.2 work is Phase B.
+
+Infrastructure fixes applied during the D4 debug cycle (post-PR #26):
+- `listFresh` in `miniapp/e2e/lib/chain.ts` now calls
+  `getTransactions` without a lt/hash cursor. The old approach
+  anchored to `getContractState.lastTransaction`; when toncenter
+  cached that state between the parking-tx and the registry-reply
+  tx the spec never saw the reply. Cursor-free matches what the
+  diagnostic script uses.
+- `listFreshSafe` wraps the polling loop so a sustained toncenter
+  5xx wave returns `[]` instead of propagating "retries exhausted".
+- `RETRY_BACKOFF_MS` capped at 2000 ms (was 5000) so one 500 wave
+  costs ≤ 62 s instead of 155 s, fitting inside any spec budget.
+- `retries: 1` in playwright config to auto-retry on transient
+  outages.
+- `WalletStub.ensureBalance` fails fast with a clear message and
+  faucet URL when the stub wallet drops below 3 TON.
+
 ### v0.2 Phase D — testnet deployment
 
 zkTGuard v0.2 is now live on **TON testnet**. The three contracts
