@@ -8,6 +8,8 @@ zkTGuard — `account_age` claim.
 | ----------------- | ------------- | ----------- | ---- |
 | `ChaCha20(1)`     | 1 × 64-B block  | 23 452 | Budget: < 50 000 per block. |
 | `ChaCha20(2)`     | 2 × 64-B blocks | 46 542 | Marginal cost ≈ 23 090 per extra block. |
+| `Poly1305(64)`    | 64-B message    |  2 793 | 5-limb lazy-reduction accumulator. |
+| `Poly1305(256)`   | 256-B (16-block) message | 9 057 | Budget: < 60 000 for 16 blocks. |
 
 Bit-sliced state (32 signals per word) makes rotations free and XOR
 one constraint per bit; only the mod-2^32 adds pay a 33-bit
@@ -19,7 +21,7 @@ then `snarkjs r1cs info`.
 
 | # | Template                    | Status | Note |
 | - | --------------------------- | ------ | ---- |
-| 1 | `AEADDecrypt(N)`            | STUB   | Being replaced in Phase B by `ChaCha20Poly1305Decrypt` (Tasks B2–B5). `ChaCha20(numBlocks)` done, measured above. |
+| 1 | `AEADDecrypt(N)`            | STUB   | Being replaced in Phase B by `ChaCha20Poly1305Decrypt` (Tasks B2–B5). `ChaCha20(numBlocks)` and `Poly1305(maxMessageBytes)` done, measured above. |
 | 2 | `TranscriptCommitment(N)`   | STUB   | Poseidon-fold of `ciphertext` + nonce; fold-tree not yet implemented for N > 15. |
 | 3 | `JsonTimestampExtract(N)`   | STUB   | Positional lookup + digit decoding pending. |
 | 4 | `TimestampThreshold()`      | DONE   | 64-bit `LessEqThan`. ~1 k constraints. |
