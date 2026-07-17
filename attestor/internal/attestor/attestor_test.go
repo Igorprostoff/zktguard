@@ -7,44 +7,20 @@ import (
 	"testing"
 )
 
-func TestSignVerifyRoundtrip(t *testing.T) {
+func TestSignVerifyDigestRoundtrip(t *testing.T) {
 	a := Generate()
-	ciphertext := []byte(`{"created":1690000000}`)
-	nonce := big.NewInt(0xdeadbeef)
-	r8x, r8y, s, _, err := a.Sign(ciphertext, nonce)
-	if err != nil {
-		t.Fatalf("sign: %v", err)
-	}
-	if err := a.Verify(ciphertext, nonce, r8x, r8y, s); err != nil {
+	digest := big.NewInt(0xdeadbeef)
+	r8x, r8y, s := a.SignDigest(digest)
+	if err := a.VerifyDigest(digest, r8x, r8y, s); err != nil {
 		t.Fatalf("verify: %v", err)
 	}
 }
 
-func TestVerifyDetectsTamper(t *testing.T) {
+func TestVerifyDigestDetectsTamper(t *testing.T) {
 	a := Generate()
-	ciphertext := []byte(`{"created":1690000000}`)
-	nonce := big.NewInt(1)
-	r8x, r8y, s, _, err := a.Sign(ciphertext, nonce)
-	if err != nil {
-		t.Fatalf("sign: %v", err)
-	}
-	tampered := []byte(`{"created":1700000000}`)
-	if err := a.Verify(tampered, nonce, r8x, r8y, s); err == nil {
-		t.Fatalf("expected verification to fail on tampered ciphertext")
-	}
-}
-
-func TestDigestStableForKnownInput(t *testing.T) {
-	d1, err := TranscriptDigest([]byte("hello"), big.NewInt(42))
-	if err != nil {
-		t.Fatalf("digest: %v", err)
-	}
-	d2, err := TranscriptDigest([]byte("hello"), big.NewInt(42))
-	if err != nil {
-		t.Fatalf("digest: %v", err)
-	}
-	if d1.Cmp(d2) != 0 {
-		t.Fatalf("digest not deterministic: %s vs %s", d1, d2)
+	r8x, r8y, s := a.SignDigest(big.NewInt(1))
+	if err := a.VerifyDigest(big.NewInt(2), r8x, r8y, s); err == nil {
+		t.Fatalf("expected verification to fail on a different digest")
 	}
 }
 

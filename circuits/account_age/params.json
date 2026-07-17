@@ -1,0 +1,4 @@
+{
+  "maxCiphertextBytes": 512,
+  "maxAADBytes": 16
+}
