@@ -10,6 +10,8 @@ zkTGuard — `account_age` claim.
 | `ChaCha20(2)`     | 2 × 64-B blocks | 46 542 | Marginal cost ≈ 23 090 per extra block. |
 | `Poly1305(64)`    | 64-B message    |  2 793 | 5-limb lazy-reduction accumulator. |
 | `Poly1305(256)`   | 256-B (16-block) message | 9 057 | Budget: < 60 000 for 16 blocks. |
+| `ChaCha20Poly1305Decrypt(128, 16)` | 128-B ct, 16-B AAD | 74 264 | 3 keystream blocks (otk + 2 payload) + MAC + decrypt glue. |
+| `ChaCha20Poly1305Decrypt(512, 16)` | 512-B ct, 16-B AAD | 225 944 | Budget (design doc §5): ChaCha20 < 400 k, Poly1305 < 60 k, glue < 20 k. |
 
 Bit-sliced state (32 signals per word) makes rotations free and XOR
 one constraint per bit; only the mod-2^32 adds pay a 33-bit
