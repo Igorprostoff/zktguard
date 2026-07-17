@@ -1,16 +1,25 @@
 # Circuit stats
 
-zkTGuard v0.1 — `account_age` claim.
+zkTGuard — `account_age` claim.
 
-Constraint counts will be recorded here once the circuit compiles
-end-to-end (i.e. once `circom` v2 is installed on the build machine and
-the AEAD / JSON / commitment stubs are replaced with real bodies).
+## Phase B primitives (measured, circom 2.2.0, `-p bls12381`)
+
+| Template          | Instantiation | Constraints | Note |
+| ----------------- | ------------- | ----------- | ---- |
+| `ChaCha20(1)`     | 1 × 64-B block  | 23 452 | Budget: < 50 000 per block. |
+| `ChaCha20(2)`     | 2 × 64-B blocks | 46 542 | Marginal cost ≈ 23 090 per extra block. |
+
+Bit-sliced state (32 signals per word) makes rotations free and XOR
+one constraint per bit; only the mod-2^32 adds pay a 33-bit
+re-decomposition. Measured via
+`circom test/circuits/chacha20_bN.circom --r1cs -l node_modules -p bls12381`
+then `snarkjs r1cs info`.
 
 ## Status of constraint groups
 
 | # | Template                    | Status | Note |
 | - | --------------------------- | ------ | ---- |
-| 1 | `AEADDecrypt(N)`            | STUB   | Interface only. AES-128-GCM or ChaCha20-Poly1305 still TBD. Tens of thousands of constraints expected. |
+| 1 | `AEADDecrypt(N)`            | STUB   | Being replaced in Phase B by `ChaCha20Poly1305Decrypt` (Tasks B2–B5). `ChaCha20(numBlocks)` done, measured above. |
 | 2 | `TranscriptCommitment(N)`   | STUB   | Poseidon-fold of `ciphertext` + nonce; fold-tree not yet implemented for N > 15. |
 | 3 | `JsonTimestampExtract(N)`   | STUB   | Positional lookup + digit decoding pending. |
 | 4 | `TimestampThreshold()`      | DONE   | 64-bit `LessEqThan`. ~1 k constraints. |

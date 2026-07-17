@@ -1,0 +1,16 @@
+diff --git a/wasm/witness_calculator.js b/wasm/witness_calculator.js
+index 733e2b62624f10af91be2c2f6c992ab1a0cf8c1b..ca2045d39daa2221e38ec651f5579a645b75358a 100755
+--- a/wasm/witness_calculator.js
++++ b/wasm/witness_calculator.js
+@@ -60,6 +60,11 @@ module.exports = async function builder(code, options) {
+             },
+             showSharedRWMemory: function () {
+                 printSharedRWMemory();
++            },
++            // circom >= 2.2.0 wasm imports runtime.printDebug; without
++            // it WebAssembly.instantiate fails with a LinkError.
++            printDebug: function () {
++                console.log(getMessage());
+             }
+ 
+         }
