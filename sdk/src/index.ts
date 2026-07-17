@@ -71,10 +71,15 @@ export interface ClaimOptions {
   userSecret: bigint;
   /** Unix seconds — must be > now() on submission. */
   expirationSec: bigint;
-  /** Optional attestor pubkey override; defaults to whatever
-   *  `/pubkey` returns. */
+  /** Optional attestor pubkey override; defaults to the pubkey the
+   *  `/attest` response carries. */
   attestorPubkey?: { x: bigint; y: bigint };
-  /** Optional creation timestamp from the attestor response. */
+  /** Upstream path the attestor should fetch. Defaults to `/account`. */
+  accountPath?: string;
+  /**
+   * @deprecated v0.2 Phase B derives `creation_timestamp` inside the
+   * circuit from the decrypted transcript; this field is ignored.
+   */
   creationTimestamp?: bigint;
 }
 
@@ -159,19 +164,29 @@ export class ZktGuardClient {
       (BigInt.asUintN(224, BigInt(Date.now()))) & ((1n << 224n) - 1n);
     const noncePacked = packNonce(this.chainId, random);
 
+    const pubkey = options.attestorPubkey ?? attest.pubkey;
+
+    // Private ChaCha20-Poly1305 witness from the attestor sealing
+    // (v0.2 Phase B). Byte buffers are zero-padded to the circuit's
+    // compile-time sizes; the length signals carry the real extent.
     const witness = {
       nonce: noncePacked.toString(),
       app_id: options.appId.toString(),
       expiration: options.expirationSec.toString(),
       claim_type: options.claimType.toString(),
-      attestor_pubkey_x: (options.attestorPubkey?.x ?? attest.pubkey.x).toString(),
-      attestor_pubkey_y: (options.attestorPubkey?.y ?? attest.pubkey.y).toString(),
+      attestor_pubkey_x: pubkey.x.toString(),
+      attestor_pubkey_y: pubkey.y.toString(),
       threshold_months: options.thresholdMonths.toString(),
       user_secret: options.userSecret.toString(),
-      creation_timestamp: (
-        options.creationTimestamp ?? 1577836800n /* 2020-01-01 default */
-      ).toString(),
       current_time: BigInt(Math.floor(Date.now() / 1000)).toString(),
+      timestamp_offset: attest.createdAtOffset.toString(),
+      tls_key: bytesToFieldStrings(attest.key, 32),
+      tls_nonce: bytesToFieldStrings(attest.nonce, 12),
+      ciphertext: bytesToFieldStrings(attest.ciphertext, MAX_CIPHERTEXT_BYTES),
+      ciphertext_length: attest.ciphertext.length.toString(),
+      aad: bytesToFieldStrings(attest.aad, MAX_AAD_BYTES),
+      aad_length: attest.aad.length.toString(),
+      tag: bytesToFieldStrings(attest.tag, 16),
     };
 
     const proofResp = await fetch(`${this.config.proverUrl.replace(/\/+$/, "")}/prove`, {
@@ -296,18 +311,74 @@ export class ZktGuardClient {
 
   private async fetchAttestation(
     options: ClaimOptions,
-  ): Promise<{ pubkey: { x: bigint; y: bigint } }> {
-    if (options.attestorPubkey) {
-      return { pubkey: options.attestorPubkey };
-    }
-    const url = `${this.config.attestorUrl.replace(/\/+$/, "")}/pubkey`;
-    const resp = await fetch(url);
+  ): Promise<Attestation> {
+    const url = `${this.config.attestorUrl.replace(/\/+$/, "")}/attest`;
+    const resp = await fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: options.accountPath ?? "/account" }),
+    });
     if (!resp.ok) {
-      throw new Error(`attestor /pubkey returned ${resp.status}`);
+      throw new Error(`attestor /attest returned ${resp.status}`);
     }
-    const body = (await resp.json()) as { x: string; y: string };
-    return { pubkey: { x: BigInt(body.x), y: BigInt(body.y) } };
+    const body = (await resp.json()) as {
+      key_hex: string;
+      nonce_hex: string;
+      aad_hex: string;
+      ciphertext_hex: string;
+      tag_hex: string;
+      created_at_offset: number;
+      pubkey_x: string;
+      pubkey_y: string;
+    };
+    if (body.created_at_offset < 0) {
+      throw new Error(`attestor transcript has no "created_at" marker`);
+    }
+    const ciphertext = hexToBytes(body.ciphertext_hex);
+    if (ciphertext.length > MAX_CIPHERTEXT_BYTES) {
+      throw new Error(
+        `transcript ${ciphertext.length} B exceeds circuit max ${MAX_CIPHERTEXT_BYTES} B`,
+      );
+    }
+    return {
+      pubkey: { x: BigInt(body.pubkey_x), y: BigInt(body.pubkey_y) },
+      key: hexToBytes(body.key_hex),
+      nonce: hexToBytes(body.nonce_hex),
+      aad: hexToBytes(body.aad_hex),
+      ciphertext,
+      tag: hexToBytes(body.tag_hex),
+      createdAtOffset: body.created_at_offset,
+    };
   }
+}
+
+/** Parsed attestor `/attest` sealing (v0.2 Phase B). */
+interface Attestation {
+  pubkey: { x: bigint; y: bigint };
+  key: Uint8Array;
+  nonce: Uint8Array;
+  aad: Uint8Array;
+  ciphertext: Uint8Array;
+  tag: Uint8Array;
+  createdAtOffset: number;
+}
+
+/** Max Telegram response size the circuit is compiled for (bytes). */
+export const MAX_CIPHERTEXT_BYTES = 512;
+/** Max AAD size the circuit is compiled for (bytes). */
+export const MAX_AAD_BYTES = 16;
+
+// Zero-pad `bytes` to `len` and render each as a decimal field-element
+// string, the shape snarkjs expects for a byte-array signal.
+function bytesToFieldStrings(bytes: Uint8Array, len: number): string[] {
+  if (bytes.length > len) {
+    throw new Error(`buffer ${bytes.length} B exceeds circuit size ${len} B`);
+  }
+  const out = new Array<string>(len);
+  for (let i = 0; i < len; i++) {
+    out[i] = (i < bytes.length ? bytes[i] : 0).toString();
+  }
+  return out;
 }
 
 /**
