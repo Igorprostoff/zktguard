@@ -14,7 +14,7 @@
     "@types/mocha": "^10.0.6",
     "@types/node": "^20.12.0",
     "chai": "^4.4.1",
-    "circom_tester": "^0.0.20",
+    "circom_tester": "^0.0.24",
     "circomlib": "^2.0.5",
     "circomlibjs": "^0.1.7",
     "ffjavascript": "^0.3.0",
