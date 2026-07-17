@@ -45,21 +45,33 @@ describe("ZktGuardClient", () => {
     expect(out).toBeNull();
   });
 
-  it("requireClaim posts the witness to the prover and returns its proof", async () => {
+  it("requireClaim seals via /attest and posts the witness to the prover", async () => {
     const calls: string[] = [];
+    let sentWitness: any = null;
     const origFetch = global.fetch;
     global.fetch = (async (url: string, opts?: any) => {
       calls.push(url + (opts?.method ? `:${opts.method}` : ""));
-      if (url.endsWith("/pubkey")) {
+      if (url.endsWith("/attest")) {
         return {
           ok: true,
           status: 200,
           async json() {
-            return { x: "5", y: "7" };
+            return {
+              key_hex: "00".repeat(32),
+              nonce_hex: "01".repeat(12),
+              salt_hex: "02".repeat(16),
+              aad_hex: "7a6b7476", // "zktv"
+              ciphertext_hex: "deadbeef",
+              tag_hex: "ff".repeat(16),
+              created_at_offset: 17,
+              pubkey_x: "5",
+              pubkey_y: "7",
+            };
           },
         };
       }
       if (url.endsWith("/prove")) {
+        sentWitness = JSON.parse(opts.body).witness;
         return {
           ok: true,
           status: 200,
@@ -91,8 +103,22 @@ describe("ZktGuardClient", () => {
       expect(cred.proof.aHex).toHaveLength(96);
       expect(cred.proof.bHex).toHaveLength(192);
       expect(cred.proof.cHex).toHaveLength(96);
-      expect(calls.some((c) => c.includes("/pubkey"))).toBe(true);
+      expect(calls.some((c) => c.includes("/attest:POST"))).toBe(true);
       expect(calls.some((c) => c.includes("/prove:POST"))).toBe(true);
+
+      // Witness carries the sealing shaped to the circuit sizes.
+      expect(sentWitness.timestamp_offset).toBe("17");
+      expect(sentWitness.tls_key).toHaveLength(32);
+      expect(sentWitness.tls_nonce).toHaveLength(12);
+      expect(sentWitness.ciphertext).toHaveLength(512);
+      expect(sentWitness.ciphertext_length).toBe("4");
+      expect(sentWitness.aad).toHaveLength(16);
+      expect(sentWitness.aad_length).toBe("4");
+      expect(sentWitness.tag).toHaveLength(16);
+      // First ciphertext byte 0xde = 222, padded tail is "0".
+      expect(sentWitness.ciphertext[0]).toBe("222");
+      expect(sentWitness.ciphertext[4]).toBe("0");
+      expect(sentWitness.attestor_pubkey_x).toBe("5");
     } finally {
       global.fetch = origFetch;
     }

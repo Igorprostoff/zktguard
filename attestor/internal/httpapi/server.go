@@ -4,6 +4,7 @@
 package httpapi
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"crypto/tls"
 	"encoding/hex"
@@ -137,9 +138,17 @@ type AttestResponse struct {
 	// SHA-256 of the recovered plaintext, for quick client-side
 	// sanity checks (not authenticated by the circuit).
 	PlaintextHashHex string `json:"plaintext_hash_hex"`
+	// Byte offset of the `"created_at"` marker in the plaintext — the
+	// circuit's timestamp_offset witness hint. -1 if the marker is
+	// absent (the prover then cannot build a valid witness).
+	CreatedAtOffset int `json:"created_at_offset"`
 	// Nonce echoed from the request.
 	Nonce string `json:"nonce"`
 }
+
+// createdAtMarker is the JSON key the circuit's JsonTimestampExtract
+// scans for; the offset points at its opening quote.
+var createdAtMarker = []byte(`"created_at":`)
 
 func (s *Server) handleAttest(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
@@ -177,6 +186,7 @@ func (s *Server) handleAttest(w http.ResponseWriter, r *http.Request) {
 	r8x, r8y, sScalar := s.att.SignDigest(digest)
 	x, y := s.att.Pubkey()
 	ptHash := sha256.Sum256(body)
+	offset := bytes.Index(body, createdAtMarker)
 
 	writeJSON(w, http.StatusOK, AttestResponse{
 		KeyHex:           hex.EncodeToString(sealed.Key),
@@ -192,6 +202,7 @@ func (s *Server) handleAttest(w http.ResponseWriter, r *http.Request) {
 		PubkeyX:          x.String(),
 		PubkeyY:          y.String(),
 		PlaintextHashHex: hex.EncodeToString(ptHash[:]),
+		CreatedAtOffset:  offset,
 		Nonce:            req.Nonce,
 	})
 }

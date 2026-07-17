@@ -11,7 +11,8 @@
   "scripts": {
     "lint": "pnpm -r --if-present lint",
     "test": "pnpm -r --if-present test",
-    "build": "pnpm -r --if-present build"
+    "build": "pnpm -r --if-present build",
+    "test:integration:phase-b": "node scripts/integration_phase_b.mjs"
   },
   "packageManager": "pnpm@9.0.0",
   "devDependencies": {

@@ -6,6 +6,65 @@ follow SemVer.
 
 ## [Unreleased]
 
+### v0.2 Phase B — ChaCha20-Poly1305 verified inside the circuit
+
+**AES-GCM TLS sessions are no longer supported.** The circuit verifies
+ChaCha20-Poly1305 and only ChaCha20-Poly1305; the attestor emits only
+that AEAD.
+
+The v0.1 AEAD / transcript / timestamp stubs are replaced with real
+Circom bodies (Tasks B2–B5):
+
+- `ChaCha20(numBlocks)` — bit-sliced RFC 8439 stream cipher.
+  23 452 constraints per 64-byte block on BLS12-381; six RFC vectors.
+- `Poly1305(maxMessageBytes)` — five-limb 26-bit accumulator, lazy
+  reduction mod `2^130 − 5`, thermometer length selector. RFC §2.5.2
+  and boundary-length vectors; cross-checked against OpenSSL.
+- `ChaCha20Poly1305Decrypt(maxCT, maxAAD)` — RFC §2.8 AEAD; tag
+  mismatch or ciphertext tamper fails witness generation. RFC §2.8.2
+  vector plus OpenSSL roundtrips.
+- `account_age/circuit.circom` now decrypts the transcript, extracts
+  `"created_at"` at a witnessed offset (`JsonTimestampExtract`), and
+  commits the session with `TranscriptCommitment`. Full circuit:
+  **249 346 constraints** (target ≤ 1 M). `params.json` sets the
+  512-byte ciphertext / 16-byte AAD sizing. Trusted-setup PoT capacity
+  raised 2^14 → 2^19; VK regenerated.
+
+Attestor and stub (Tasks B6, B7):
+
+- The attestor fetches the upstream over **TLS 1.3** and seals the
+  body with ChaCha20-Poly1305 under a key from the RFC 5705 session
+  exporter (fresh per-seal salt ⇒ no keystream reuse across kept-alive
+  connections). It signs a Poseidon commitment over the sealing. The
+  `/attest` response schema changed to the sealing tuple; **v0.1
+  clients break**, as the DoD permits.
+- Go's `crypto/tls` exposes neither TLS 1.3 record keys nor
+  cipher-suite selection, so the "ChaCha20-Poly1305 only" constraint
+  is enforced by the attestor emitting only that AEAD, not by the
+  negotiated record suite. Rationale in `attestor/internal/session`
+  and the attestor README.
+- `zktguard-stub` terminates TLS 1.3 with a self-signed cert
+  (`scripts/gen_stub_cert.sh`, gitignored); attestor reaches it with
+  `--insecure-skip-verify`.
+
+Wiring and docs:
+
+- SDK `requireClaim` posts to `/attest`, decodes the sealing, and
+  builds the new private witness (`tls_key`, `tls_nonce`,
+  `ciphertext`, `aad`, `tag`, `timestamp_offset`). `creationTimestamp`
+  is deprecated — the circuit now derives it.
+- `pnpm test:integration:phase-b` runs stub → attestor → prover →
+  verify with a real (non-synthetic) proof
+  (`scripts/integration_phase_b.mjs`).
+- `paper/zktguard.tex` Construction section describes the real AEAD
+  verification and the honest trust boundary.
+- `circom_tester` bumped to 0.0.24 and patched for the circom 2.2
+  `runtime.printDebug` wasm import.
+
+Deferred to v0.3: in-circuit verification of the attestor's
+EdDSA-BabyJubjub signature (cross-field BN254↔BLS12-381; the signature
+is checked off-circuit in v0.2).
+
 ### v0.2 Phase D4 closure — three consecutive green e2e runs
 
 D4 DoD satisfied on 2026-06-02: three consecutive `e2e-testnet`
