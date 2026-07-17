@@ -12,7 +12,7 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-CERT_DIR="${ROOT}/certs"
+CERT_DIR="${CERT_DIR:-${ROOT}/certs}"
 CRT="${CERT_DIR}/stub.crt"
 KEY="${CERT_DIR}/stub.key"
 
