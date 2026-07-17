@@ -5,7 +5,8 @@
 #
 # Steps
 #   1. Compile the circuit with `circom -p bls12381`.
-#   2. Generate a local BLS12-381 PoT of capacity 2^14 with a fixed
+#   2. Generate a local BLS12-381 PoT of capacity 2^POT_POWER
+#      (default 19 — Phase B needs ≥ 250 k constraints) with a fixed
 #      entropy seed (research-only, see PTAU.md).
 #   3. Run `snarkjs groth16 setup` against the R1CS + PoT.
 #   4. Phase-2 contribute with a fixed seed from PHASE2_SEED.txt.
@@ -17,7 +18,7 @@
 #   build/circuit.r1cs                — compiled R1CS
 #   build/circuit_js/circuit.wasm     — witness generator
 #   build/circuit.sym                 — debug symbols
-#   build/pot14_final.ptau            — finalised PoT
+#   build/pot${POT_POWER}_final.ptau   — finalised PoT
 #   build/account_age_pkey.zkey       — proving key
 #
 # Outputs committed:
@@ -35,6 +36,7 @@ CIRCUIT="${ROOT}/account_age/circuit.circom"
 VK_OUT="${ROOT}/account_age/verification_key.json"
 PHASE2_SEED_FILE="${ROOT}/PHASE2_SEED.txt"
 PHASE1_SEED="${PHASE1_SEED:-zktguard-deterministic-seed-0001}"
+POT_POWER="${POT_POWER:-19}"
 
 mkdir -p "${BUILD}"
 
@@ -63,23 +65,23 @@ circom "${CIRCUIT}" \
   -l "${ROOT}/node_modules" \
   -o "${BUILD}"
 
-step "phase-1: powers of tau (deterministic local PoT, BLS12-381, 2^14)"
-if [ ! -f "${BUILD}/pot14_final.ptau" ]; then
-  pnpm exec snarkjs powersoftau new bls12381 14 "${BUILD}/pot14_0000.ptau" -v
+step "phase-1: powers of tau (deterministic local PoT, BLS12-381, 2^${POT_POWER})"
+if [ ! -f "${BUILD}/pot${POT_POWER}_final.ptau" ]; then
+  pnpm exec snarkjs powersoftau new bls12381 "${POT_POWER}" "${BUILD}/pot${POT_POWER}_0000.ptau" -v
   pnpm exec snarkjs powersoftau contribute \
-    "${BUILD}/pot14_0000.ptau" \
-    "${BUILD}/pot14_0001.ptau" \
+    "${BUILD}/pot${POT_POWER}_0000.ptau" \
+    "${BUILD}/pot${POT_POWER}_0001.ptau" \
     --name="zktguard v0.2 phase 1 research-grade local PoT" \
     -e="${PHASE1_SEED}"
   pnpm exec snarkjs powersoftau prepare phase2 \
-    "${BUILD}/pot14_0001.ptau" \
-    "${BUILD}/pot14_final.ptau"
+    "${BUILD}/pot${POT_POWER}_0001.ptau" \
+    "${BUILD}/pot${POT_POWER}_final.ptau"
 fi
 
 step "groth16 setup"
 pnpm exec snarkjs groth16 setup \
   "${BUILD}/circuit.r1cs" \
-  "${BUILD}/pot14_final.ptau" \
+  "${BUILD}/pot${POT_POWER}_final.ptau" \
   "${BUILD}/account_age_0000.zkey"
 
 step "phase-2 contribution (deterministic seed from PHASE2_SEED.txt)"

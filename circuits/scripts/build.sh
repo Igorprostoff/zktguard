@@ -32,6 +32,7 @@ for c in "${CIRCUITS[@]}"; do
   echo "compiling $c"
   circom "${ROOT}/${c}" \
     --r1cs --wasm --sym \
+    -p bls12381 \
     -l "${ROOT}/node_modules" \
     -o "${OUT}"
   echo "  → ${OUT}/${name}.r1cs"

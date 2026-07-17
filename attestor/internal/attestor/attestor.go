@@ -20,7 +20,6 @@ import (
 	"os"
 
 	"github.com/iden3/go-iden3-crypto/babyjub"
-	"github.com/iden3/go-iden3-crypto/poseidon"
 )
 
 // Attestor holds the signing key. The public methods are safe to
@@ -74,25 +73,19 @@ func (a *Attestor) Pubkey() (x, y *big.Int) {
 	return a.pk.X, a.pk.Y
 }
 
-// Sign hashes the (ciphertext, nonce) tuple with Poseidon and signs
-// the digest with EdDSA-BabyJubjub. Returns (R8x, R8y, S) — the
-// canonical circomlib triple.
-func (a *Attestor) Sign(ciphertext []byte, nonce *big.Int) (r8x, r8y, s *big.Int, digest *big.Int, err error) {
-	digest, err = TranscriptDigest(ciphertext, nonce)
-	if err != nil {
-		return nil, nil, nil, nil, err
-	}
+// SignDigest signs a pre-computed Poseidon digest with
+// EdDSA-BabyJubjub. Returns the canonical circomlib (R8x, R8y, S)
+// triple. This is the v0.2 Phase B signing path: callers pass the
+// session.Sealed.Digest() commitment over the ChaCha20-Poly1305
+// material (key ‖ nonce ‖ ct-hash ‖ aad-hash ‖ tag ‖ lengths).
+func (a *Attestor) SignDigest(digest *big.Int) (r8x, r8y, s *big.Int) {
 	sig := a.sk.SignPoseidon(digest)
-	return sig.R8.X, sig.R8.Y, sig.S, digest, nil
+	return sig.R8.X, sig.R8.Y, sig.S
 }
 
-// Verify checks an EdDSA-BabyJubjub signature against the digest
-// derived from (ciphertext, nonce). Returns nil on success.
-func (a *Attestor) Verify(ciphertext []byte, nonce, r8x, r8y, s *big.Int) error {
-	digest, err := TranscriptDigest(ciphertext, nonce)
-	if err != nil {
-		return err
-	}
+// VerifyDigest checks an EdDSA-BabyJubjub signature against a
+// pre-computed digest. Returns nil on success.
+func (a *Attestor) VerifyDigest(digest, r8x, r8y, s *big.Int) error {
 	sig := &babyjub.Signature{
 		R8: &babyjub.Point{X: r8x, Y: r8y},
 		S:  s,
@@ -103,45 +96,7 @@ func (a *Attestor) Verify(ciphertext []byte, nonce, r8x, r8y, s *big.Int) error 
 	return nil
 }
 
-// TranscriptDigest is the Poseidon hash that the circuit consumes.
-// The ciphertext is chunked into 31-byte field-friendly pieces; in
-// v0.1 we expect short ciphertexts (the stub returns < 200 bytes)
-// and fall back to single-element Poseidon when the chunk count
-// fits the arity limit.
-func TranscriptDigest(ciphertext []byte, nonce *big.Int) (*big.Int, error) {
-	const fieldSize = 31 // Poseidon over BN254 fits 254 bits per slot
-	chunks := chunkBytes(ciphertext, fieldSize)
-	inputs := make([]*big.Int, 0, len(chunks)+1)
-	for _, c := range chunks {
-		inputs = append(inputs, new(big.Int).SetBytes(c))
-	}
-	if nonce == nil {
-		nonce = big.NewInt(0)
-	}
-	inputs = append(inputs, new(big.Int).Set(nonce))
-
-	if len(inputs) == 0 {
-		return nil, errors.New("attestor: empty transcript")
-	}
-	if len(inputs) > 16 {
-		// Poseidon arity ≤ 16; production should fold via a Merkle
-		// tree. v0.1 panics loudly so we don't silently truncate.
-		return nil, fmt.Errorf("attestor: %d inputs exceeds Poseidon arity 16", len(inputs))
-	}
-	return poseidon.Hash(inputs)
-}
-
-func chunkBytes(b []byte, n int) [][]byte {
-	if len(b) == 0 {
-		return nil
-	}
-	out := make([][]byte, 0, (len(b)+n-1)/n)
-	for i := 0; i < len(b); i += n {
-		j := i + n
-		if j > len(b) {
-			j = len(b)
-		}
-		out = append(out, b[i:j])
-	}
-	return out
-}
+// The v0.1 TranscriptDigest / chunkBytes helpers (Poseidon over the
+// plaintext body ‖ nonce) are retired in v0.2 Phase B. The attestor
+// now signs the ChaCha20-Poly1305 sealing commitment computed by
+// package session; see SignDigest.

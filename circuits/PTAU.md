@@ -18,7 +18,7 @@ ceremony.
 | Field | Value |
 | ----- | ----- |
 | Curve | BLS12-381 |
-| Phase-1 capacity | 2^14 (16 384 constraints) |
+| Phase-1 capacity | 2^19 (524 288 constraints; Phase B's circuit is ≈ 250 k) |
 | Phase-1 entropy | `zktguard-deterministic-seed-0001` (research-only) |
 | Phase-2 entropy | see `circuits/PHASE2_SEED.txt` |
 | Tooling | `snarkjs` v0.7.4 |
@@ -31,7 +31,7 @@ bash scripts/install_circom.sh    # if circom is not on PATH yet
 bash scripts/setup.sh
 ```
 
-The script writes `circuits/build/pot14_final.ptau`,
+The script writes `circuits/build/pot19_final.ptau`,
 `circuits/build/account_age_pkey.zkey`, and
 `circuits/account_age/verification_key.json`. Of these, only the VK
 is committed (the others are large and gitignored).

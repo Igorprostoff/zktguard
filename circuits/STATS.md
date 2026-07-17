@@ -12,6 +12,7 @@ zkTGuard — `account_age` claim.
 | `Poly1305(256)`   | 256-B (16-block) message | 9 057 | Budget: < 60 000 for 16 blocks. |
 | `ChaCha20Poly1305Decrypt(128, 16)` | 128-B ct, 16-B AAD | 74 264 | 3 keystream blocks (otk + 2 payload) + MAC + decrypt glue. |
 | `ChaCha20Poly1305Decrypt(512, 16)` | 512-B ct, 16-B AAD | 225 944 | Budget (design doc §5): ChaCha20 < 400 k, Poly1305 < 60 k, glue < 20 k. |
+| **`AccountAge(512, 16)` (full circuit)** | — | **249 346** | 235 202 non-linear + 14 144 linear. Target ceiling 1 M, hard ceiling 2 M — comfortably inside. PoT capacity 2^19. |
 
 Bit-sliced state (32 signals per word) makes rotations free and XOR
 one constraint per bit; only the mod-2^32 adds pay a 33-bit
@@ -23,11 +24,11 @@ then `snarkjs r1cs info`.
 
 | # | Template                    | Status | Note |
 | - | --------------------------- | ------ | ---- |
-| 1 | `AEADDecrypt(N)`            | STUB   | Being replaced in Phase B by `ChaCha20Poly1305Decrypt` (Tasks B2–B5). `ChaCha20(numBlocks)` and `Poly1305(maxMessageBytes)` done, measured above. |
-| 2 | `TranscriptCommitment(N)`   | STUB   | Poseidon-fold of `ciphertext` + nonce; fold-tree not yet implemented for N > 15. |
-| 3 | `JsonTimestampExtract(N)`   | STUB   | Positional lookup + digit decoding pending. |
+| 1 | `ChaCha20Poly1305Decrypt(maxCT, maxAAD)` | DONE (Phase B) | Replaces the v0.1 `AEADDecrypt` stub. RFC 8439 in full; tag mismatch fails witness generation. |
+| 2 | `TranscriptCommitment(maxCT, maxAAD)`    | DONE (Phase B) | Poseidon fold (31-byte big-endian chunks) + outer digest over key/nonce/ct-hash/aad-hash/tag/lengths — the attestor's signing payload. Signature verified off-circuit in v0.2 (see below). |
+| 3 | `JsonTimestampExtract(N)`   | DONE (Phase B) | One-hot window at a witnessed offset; `"created_at":` marker match + 10-digit ASCII decode. |
 | 4 | `TimestampThreshold()`      | DONE   | 64-bit `LessEqThan`. ~1 k constraints. |
-| 5 | `AttestorEdDSAVerify()`     | DONE   | BabyJubjub EdDSA via circomlib. ~4 k constraints. |
+| 5 | `AttestorEdDSAVerify()`     | NOT WIRED (v0.3) | Template exists, but the circuit is BLS12-381 while the attestor signs EdDSA-BabyJubjub over BN254; a cross-field in-circuit verify is the flagged v0.3 item (design doc §6). The signature is checked off-circuit against the same `TranscriptCommitment` digest. |
 | 6 | `NullifierPoseidon()`       | DONE   | Poseidon(3 inputs). ~300 constraints. |
 
 ## How to populate this file

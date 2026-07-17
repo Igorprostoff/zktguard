@@ -22,8 +22,9 @@ import (
 
 func main() {
 	addr := flag.String("addr", "127.0.0.1:7677", "listen address")
-	upstream := flag.String("upstream", "http://127.0.0.1:7676", "upstream stub URL")
+	upstream := flag.String("upstream", "https://127.0.0.1:7676", "upstream stub URL (TLS 1.3)")
 	keyPath := flag.String("key", "", "path to 64-hex-char private key (optional; generates a fresh key when empty)")
+	insecure := flag.Bool("insecure-skip-verify", false, "skip upstream TLS cert verification (dev only, for the self-signed stub cert)")
 	flag.Parse()
 
 	var att *attestor.Attestor
@@ -39,7 +40,7 @@ func main() {
 		att = a
 	}
 
-	srv := httpapi.New(att, *upstream)
+	srv := httpapi.New(att, *upstream, *insecure)
 	fmt.Fprintf(os.Stderr, "[zktguard-attestor] listening on %s, upstream=%s\n", *addr, *upstream)
 	if err := http.ListenAndServe(*addr, srv.Handler()); err != nil {
 		log.Fatal(err)
