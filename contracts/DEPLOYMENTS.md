@@ -3,7 +3,37 @@
 zkTGuard reference contracts. Testnet only — mainnet is intentionally
 out of scope through at least v0.2.
 
-## v0.2 testnet deployment
+## v0.2 Phase B testnet deployment (current)
+
+Redeploy with the Phase-B verification key (in-circuit
+ChaCha20-Poly1305, 249 346 constraints). Fresh instances of all three
+contracts; the Phase-A deployment below remains on chain but is
+retired. Deployed from CI via the `deploy-testnet` workflow
+(run 29636614420). Record: `contracts/deployments/v0.2-testnet.json`.
+
+- Deployer wallet (v5R1): `kQDsSjXW6c72u4OFePCVWMTxGebuxfrvgrWsXlpFwQrGQihc`
+  (the e2e stub wallet; it is the admin of all three contracts)
+- Network: TON testnet (`https://testnet.toncenter.com`)
+- Date: 2026-07-18
+
+### Contracts
+
+| Contract            | Address                                                              | Deploy tx |
+| ------------------- | -------------------------------------------------------------------- | --------- |
+| AppRegistry         | `kQC3iKBTNrafHaoTFN6UwrR4LRM_-GZTosffllkhwQmtqg_h` | `d0d8e3682b718d021ff8b1ea4f73054f8c42f7870c62de450103f10b6757b6be` |
+| SoulboundCollection | `kQC1TLZnOvkR93n4Hh3qQz0AhjvqnBJc8pKaV-J9aEWIMkP9` | `d33a7640b566dbb4f626b2d015f8fe6903fbd6fa299b927d5553245ea75b7c33` |
+| Groth16Verifier     | `kQB4g0yg0VmIQBX2Le_2ZVIE1F-k4BsXKl2Gkf3DroyVo9k1` | `96168298a098543dad56bcc27bd8498546cc46eacb88cd77b75eb733c735fa0f` |
+
+### Wiring transactions
+
+| Op                                | Tx hash |
+| --------------------------------- | ------- |
+| `op::set_collection` on verifier  | `40d0212f8bceb507a889e42c01d15bf1a99578f0a4e142cce86ae93c1304f6b0` |
+| `op::set_registry` on verifier    | `105846f132a7a736d5dfe03c62fd8664a82ac10a1a7cdabd90b819456aa9c905` |
+| `op::set_verifier` on collection  | `6ec457b5f4c329b5304d13625479938a91680a5dfb5d15fbeacc6dc47f53e2d0` |
+| `op::register (app_id=1, claim_type=1)` on registry | `267ecd83c58695176319b9b535bb4da0d83c2978d34a89459661266fcde77d45` |
+
+## v0.2 Phase A testnet deployment (superseded 2026-07-18)
 
 Live deployment of v0.2 to the public TON testnet (workchain 0). All
 addresses are bounceable, testnet-only (`kQ…` prefix). Deployment

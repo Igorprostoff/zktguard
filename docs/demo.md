@@ -19,9 +19,9 @@ the Mini App and the off-chain helpers locally.
 
 | Contract            | Address                                                                                              |
 | ------------------- | ---------------------------------------------------------------------------------------------------- |
-| Groth16Verifier     | [`kQDEYarA…D9vG__O`](https://testnet.tonscan.org/address/kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O) |
-| AppRegistry         | [`kQAyi4Dt…f0APspV`](https://testnet.tonscan.org/address/kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV) |
-| SoulboundCollection | [`kQDN-5cr…dTOISty`](https://testnet.tonscan.org/address/kQDN-5crzz5jUS-O61k8RIqyoRqi26i8nDGcgT93PdTOISty) |
+| Groth16Verifier     | [`kQB4g0yg…royVo9k1`](https://testnet.tonscan.org/address/kQB4g0yg0VmIQBX2Le_2ZVIE1F-k4BsXKl2Gkf3DroyVo9k1) |
+| AppRegistry         | [`kQC3iKBT…wQmtqg_h`](https://testnet.tonscan.org/address/kQC3iKBTNrafHaoTFN6UwrR4LRM_-GZTosffllkhwQmtqg_h) |
+| SoulboundCollection | [`kQC1TLZn…aEWIMkP9`](https://testnet.tonscan.org/address/kQC1TLZnOvkR93n4Hh3qQz0AhjvqnBJc8pKaV-J9aEWIMkP9) |
 
 The deployer wallet and full audit trail are in
 [`contracts/DEPLOYMENTS.md`](https://github.com/Igorprostoff/zktguard/blob/main/contracts/DEPLOYMENTS.md).
@@ -61,8 +61,8 @@ pnpm --filter @zktguard/miniapp dev
 Browse to `http://127.0.0.1:5173`.
 
 **What you should see:** a dark card titled "zkTGuard" with the
-`v0.2 Phase A — real VK` badge, a TON Connect button, and a disabled
-**Connect a wallet first** button.
+`v0.2 Phase B — in-circuit AEAD` badge, a TON Connect button, and a
+disabled **Connect a wallet first** button.
 
 ### 2. Connect a wallet
 
@@ -80,7 +80,8 @@ assembles the four-ref verifier message.
 
 **What you should see:** the button label cycles through
 `Asking the attestor…` → `Building the proof…` → `Submitting to
-TON…` over ~5–10 seconds.
+TON…`. The proof step takes ~10–15 s — the Phase-B circuit decrypts
+the ChaCha20-Poly1305 transcript in-circuit (249 k constraints).
 
 ### 4. Sign the transaction
 
@@ -88,7 +89,7 @@ TON Connect pops a confirmation in your wallet. The transaction
 carries the four-ref `op::verify_claim` body and ~0.5 TON for gas.
 
 **What you should see:** a wallet confirmation prompt showing the
-verifier address `kQDEYarA…` and the 0.5 TON value. Sign it. The
+verifier address `kQB4g0yg…` and the 0.5 TON value. Sign it. The
 wallet returns to the Mini App.
 
 ### 5. Watch the credential land
@@ -106,17 +107,19 @@ confirm the soulbound token exists.
 
 ## Expected wall time
 
-Measured against the live deployment on 2026-05-23:
+On-chain hops measured against the Phase-A deployment on 2026-05-23;
+the prover row reflects the Phase-B circuit (249 k constraints,
+benchmark in `prover/BENCHMARKS.md`):
 
 | Hop                                              | Wall time |
 | ------------------------------------------------ | --------- |
-| Attestor stub fetch + sign                       | ~50 ms    |
-| Prover server (snarkjs Groth16)                  | 4–8 s     |
+| Attestor TLS fetch + seal + sign                 | ~100 ms   |
+| Prover server (snarkjs Groth16, Phase-B circuit) | 10–15 s   |
 | Wallet sign + broadcast                          | 5–15 s (UX bound) |
 | On-chain verify + park                           | 5–10 s    |
 | Registry round-trip (query + reply)              | 10–15 s   |
 | Mint deploy                                      | 5–10 s    |
-| **Total clock time**                             | **30–60 s** |
+| **Total clock time**                             | **40–70 s** |
 
 Per-step on-chain transaction hashes from the v0.2 sanity-check run
 are in `contracts/deployments/sanity-check.json`.
@@ -133,9 +136,10 @@ are in `contracts/deployments/sanity-check.json`.
   the admin rotates the registry to a bad address; if it does, see
   `contracts/scripts/sanityCheckTestnet.ts` for the rewire flow.
 - **`/prove` returns "circuit hash mismatch".** Re-run
-  `bash circuits/scripts/setup.sh` to refresh the proving key. The
-  committed VK in `circuits/account_age/verification_key.json` is the
-  canonical one the verifier was deployed against.
+  `bash circuits/scripts/fetch_pkey.sh` — it verifies the proving
+  key's SHA-256 against the one that pairs with the committed VK in
+  `circuits/account_age/verification_key.json` (the key the verifier
+  was deployed against).
 
 ## Recording the video
 

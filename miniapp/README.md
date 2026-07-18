@@ -8,9 +8,9 @@ The v0.2 Phase-D1 contracts are live on **TON testnet**. Point a testnet wallet 
 
 | Contract            | Address                                                                                              |
 | ------------------- | ---------------------------------------------------------------------------------------------------- |
-| Groth16Verifier     | [`kQDEYarA…D9vG__O`](https://testnet.tonscan.org/address/kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O) |
-| AppRegistry         | [`kQAyi4Dt…f0APspV`](https://testnet.tonscan.org/address/kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV) |
-| SoulboundCollection | [`kQDN-5cr…dTOISty`](https://testnet.tonscan.org/address/kQDN-5crzz5jUS-O61k8RIqyoRqi26i8nDGcgT93PdTOISty) |
+| Groth16Verifier     | [`kQB4g0yg…royVo9k1`](https://testnet.tonscan.org/address/kQB4g0yg0VmIQBX2Le_2ZVIE1F-k4BsXKl2Gkf3DroyVo9k1) |
+| AppRegistry         | [`kQC3iKBT…wQmtqg_h`](https://testnet.tonscan.org/address/kQC3iKBTNrafHaoTFN6UwrR4LRM_-GZTosffllkhwQmtqg_h) |
+| SoulboundCollection | [`kQC1TLZn…aEWIMkP9`](https://testnet.tonscan.org/address/kQC1TLZnOvkR93n4Hh3qQz0AhjvqnBJc8pKaV-J9aEWIMkP9) |
 
 `miniapp/.env.example` already pins these. Copy it to `.env.local` and run `pnpm dev`.
 
