@@ -89,13 +89,15 @@ jobs:
       - name: Verify off-chain endpoints are reachable from the host
         run: |
           set -e
+          # The stub speaks TLS 1.3 with a self-signed cert (Phase B),
+          # hence https + -k for that probe only.
           for url in \
-            http://127.0.0.1:7676/account \
+            https://127.0.0.1:7676/account \
             http://127.0.0.1:7677/health \
             http://127.0.0.1:7677/pubkey \
             http://127.0.0.1:7679/health; do
             for i in $(seq 1 30); do
-              if curl -fs "$url" >/dev/null; then
+              if curl -fsk "$url" >/dev/null; then
                 echo "ok: $url"
                 break
               fi
