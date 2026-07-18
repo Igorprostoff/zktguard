@@ -7,12 +7,23 @@ const VALID_ADDR = "EQDk2VTvn04SUKJrW7rXahzdF8_Qi6utb0wj43InCu9vdjrR";
 
 function stubFetch() {
   return vi.fn(async (url: string) => {
-    if (url.endsWith("/pubkey")) {
+    if (url.endsWith("/attest")) {
+      // v0.2 Phase B sealing tuple (see attestor httpapi AttestResponse)
       return {
         ok: true,
         status: 200,
         async json() {
-          return { x: "5", y: "7" };
+          return {
+            key_hex: "00".repeat(32),
+            nonce_hex: "01".repeat(12),
+            salt_hex: "02".repeat(16),
+            aad_hex: "7a6b7476",
+            ciphertext_hex: "deadbeef",
+            tag_hex: "ff".repeat(16),
+            created_at_offset: 17,
+            pubkey_x: "5",
+            pubkey_y: "7",
+          };
         },
       };
     }
