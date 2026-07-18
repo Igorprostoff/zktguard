@@ -13,6 +13,8 @@
 # Bind mounts keep secrets and the proving key OUT of the image:
 #   - attestor key      ../attestor/keys/attestor.hex  (mode 600, gitignored)
 #   - proving key       ../circuits/build/account_age_pkey.zkey
+#                       (not in git — run `bash circuits/scripts/fetch_pkey.sh`
+#                       once before `docker compose up`)
 #   - circuit wasm      ../circuits/build/circuit_js/circuit.wasm
 #   - verification key  ../circuits/account_age/verification_key.json
 

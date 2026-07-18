@@ -73,6 +73,12 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
+      # The Groth16 proving key (~169 MB) exceeds GitHub's in-repo
+      # limit and ships as a release asset; the compose prover mounts
+      # it from circuits/build/. SHA-256 pinned in the script.
+      - name: Fetch proving key
+        run: bash circuits/scripts/fetch_pkey.sh
+
       - name: Bring up off-chain stack
         run: docker compose -f infra/docker-compose.yml up -d --wait --wait-timeout 300
 

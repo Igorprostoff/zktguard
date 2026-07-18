@@ -34,10 +34,10 @@ The deployer wallet and full audit trail are in
    cd zktguard
    pnpm install
    ```
-2. Install `circom` and run the trusted setup (≈90 s on a 2024 laptop):
+2. Fetch the proving key (~169 MB release asset; pairs with the
+   committed verification key — no local trusted setup needed):
    ```bash
-   bash scripts/install_circom.sh
-   bash circuits/scripts/setup.sh
+   bash circuits/scripts/fetch_pkey.sh
    ```
 3. Bring up the off-chain stack via Docker:
    ```bash
