@@ -53,9 +53,11 @@ const pad = (buf, len) => {
 };
 
 const input = {
-  nonce: ((239n << 224n) | 424242n).toString(), // chain_id 239 (TON testnet convention)
+  nonce: ((1n << 224n) | 424242n).toString(), // chain_id 1 = FunC verifier CHAIN_ID (testnet binding)
   app_id: "1",
-  expiration: String(now + 3600),
+  // Far future (2033): the committed contracts fixture must not
+  // expire on the sandbox's real clock.
+  expiration: "2000000000",
   claim_type: "1",
   attestor_pubkey_x: "11",
   attestor_pubkey_y: "12",

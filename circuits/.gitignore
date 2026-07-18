@@ -9,12 +9,17 @@ build/
 *.ptau
 *_js/
 
-# Exceptions (force-added with `git add -f`, then stay tracked):
-#   build/account_age_pkey.zkey
+# Exception (force-added with `git add -f`, then stays tracked):
 #   build/circuit_js/circuit.wasm
-# Both pair with the deployed verifier (verification_key.json,
-# committed in account_age/). The Phase-1 PoT is non-deterministic
-# across machines, so CI cannot rebuild these without breaking the
-# deployed VK.
+# It pairs with the committed verification_key.json. The Phase-1 PoT
+# is non-deterministic across machines, so CI cannot rebuild it
+# without breaking the deployed VK.
+#
+# The proving key (build/account_age_pkey.zkey) is NOT tracked as of
+# Phase B: at 249 k constraints it weighs ~169 MB, past GitHub's
+# 100 MB limit. It pairs with the same ceremony as the committed VK
+# and must be distributed out-of-band (release asset) or regenerated
+# locally via scripts/setup.sh FORCE_REGEN=1 — note the regenerated
+# VK then differs and the on-chain verifier must be redeployed.
 
 # verification_key.json is committed at account_age/verification_key.json
