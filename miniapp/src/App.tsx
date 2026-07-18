@@ -59,7 +59,7 @@ export function App() {
 
       <div className="card">
         <div className="row between" style={{ marginBottom: 12 }}>
-          <span className="badge">v0.2 Phase A — real VK</span>
+          <span className="badge">v0.2 Phase B — in-circuit AEAD</span>
           <span data-testid="wallet-connect-button">
             <TonConnectButton />
           </span>
@@ -133,7 +133,7 @@ function buildConfig(): ZktGuardConfig {
     network: (env.VITE_NETWORK as ZktGuardConfig["network"]) ?? "testnet",
     verifierAddress: env.VITE_VERIFIER_ADDRESS ??
       // v0.2 Phase-D1 testnet verifier — see contracts/DEPLOYMENTS.md.
-      "kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O",
+      "kQB4g0yg0VmIQBX2Le_2ZVIE1F-k4BsXKl2Gkf3DroyVo9k1",
     attestorUrl: env.VITE_ATTESTOR_URL ?? "http://127.0.0.1:7677",
     proverUrl: env.VITE_PROVER_URL ?? "http://127.0.0.1:7679",
   };

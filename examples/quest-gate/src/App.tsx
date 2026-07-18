@@ -7,7 +7,7 @@ export function App() {
       title="Quest gate"
       blurb="Prove your Telegram account is old enough to unlock the quest reward. Nothing about your account is revealed."
       ctaIdle="Unlock the quest reward"
-      defaultVerifier="kQDEYarAKoDzCfWckI7MhOzEqw6LLaderdpRMRVcop9vG__O"
+      defaultVerifier="kQB4g0yg0VmIQBX2Le_2ZVIE1F-k4BsXKl2Gkf3DroyVo9k1"
       renderSuccess={(cred: Credential, addr: string) => (
         <>
           <h2 style={{ fontSize: 16, margin: "0 0 8px" }}>

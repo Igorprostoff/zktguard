@@ -53,7 +53,7 @@ describe("WalletStub", () => {
     });
 
     const dummyAddress = Address.parse(
-      "kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV",
+      "kQC3iKBTNrafHaoTFN6UwrR4LRM_-GZTosffllkhwQmtqg_h",
     );
     const dummyBody = beginCell().storeUint(0x76657266, 32).endCell();
     const result = await stub.sendTransaction({
@@ -94,7 +94,7 @@ describe("WalletStub", () => {
       validUntil: Math.floor(Date.now() / 1000) + 600,
       messages: [
         {
-          address: "kQAyi4Dt6bY-ItpA6cDJ3-vQ-3GjCKqRvTMfSfbY4f0APspV",
+          address: "kQC3iKBTNrafHaoTFN6UwrR4LRM_-GZTosffllkhwQmtqg_h",
           amount: "1",
         },
       ],
