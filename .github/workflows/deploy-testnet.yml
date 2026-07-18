@@ -1,0 +1,71 @@
+# Manual testnet deployment (v0.2 Phase B verifier redeploy).
+#
+# Runs contracts/scripts/deployTestnet.ts with the wallet mnemonic
+# from the `test` environment (same WALLET_STUB_MNEMONIC the
+# e2e-testnet workflow uses — the fresh contracts get that wallet as
+# their admin). Dispatch-only; never runs automatically.
+#
+# Run it twice:
+#   1. mode=check  — prints the derived wallet address + balance and
+#      exits before sending anything. Confirm the address is the
+#      funded one.
+#   2. mode=deploy — full 7-step deploy; uploads the resulting
+#      deployments JSON as a workflow artifact for committing.
+
+name: deploy-testnet
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "check = dry-run (no transactions), deploy = real deployment"
+        type: choice
+        options: [check, deploy]
+        default: check
+      wallet_version:
+        description: "Wallet contract version the mnemonic derives"
+        type: choice
+        options: [v5r1, v4r2, v3r2]
+        default: v5r1
+
+jobs:
+  deploy:
+    name: Deploy to testnet (${{ inputs.mode }})
+    runs-on: ubuntu-latest
+    environment: test
+    env:
+      WALLET_MNEMONIC: ${{ secrets.WALLET_STUB_MNEMONIC }}
+      TONCENTER_API_KEY: ${{ secrets.TONCENTER_API_KEY }}
+      WALLET_VERSION: ${{ inputs.wallet_version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Guard secret present
+        run: |
+          if [ -z "${WALLET_MNEMONIC}" ]; then
+            echo "::error::WALLET_STUB_MNEMONIC is empty; check the test environment configuration."
+            exit 1
+          fi
+
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile || pnpm install
+
+      - name: Run deployment script
+        working-directory: contracts
+        env:
+          CHECK_ONLY: ${{ inputs.mode == 'check' && '1' || '' }}
+        run: pnpm exec tsx scripts/deployTestnet.ts
+
+      - name: Upload deployment record
+        if: inputs.mode == 'deploy'
+        uses: actions/upload-artifact@v4
+        with:
+          name: testnet-deployment
+          path: contracts/deployments/*.json
+          if-no-files-found: error
