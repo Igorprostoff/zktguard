@@ -60,6 +60,16 @@ Wiring and docs:
   verification and the honest trust boundary.
 - `circom_tester` bumped to 0.0.24 and patched for the circom 2.2
   `runtime.printDebug` wasm import.
+- Proving benchmark (`prover/BENCHMARKS.md`): 249 k-constraint proof
+  in ~10 s on the reference machine (target < 30 s); full
+  stub → attestor → prover → verify integration passes with a real
+  proof in ~12 s.
+- **Proving key is no longer committed**: at 249 k constraints the
+  `.zkey` weighs ~169 MB, past GitHub's 100 MB limit. It pairs with
+  the committed VK and must be distributed as a release asset (or
+  regenerated with `FORCE_REGEN=1 setup.sh`, which changes the VK).
+  The `e2e-testnet` workflow needs that asset wired in before it can
+  go green again — same gate as the testnet verifier redeploy.
 
 Deferred to v0.3: in-circuit verification of the attestor's
 EdDSA-BabyJubjub signature (cross-field BN254↔BLS12-381; the signature
