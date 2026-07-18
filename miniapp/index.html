@@ -6,9 +6,21 @@
     <title>zkTGuard Mini App</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="theme-color" content="#1f2233" />
+    <!-- Telegram Mini App bridge. Harmless outside Telegram; inside
+         the Telegram webview it exposes window.Telegram.WebApp so the
+         app can expand to full height and follow the TG theme. -->
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
   </head>
   <body>
     <div id="root"></div>
+    <script type="module">
+      // Signal readiness + expand when running inside Telegram.
+      const twa = window.Telegram?.WebApp;
+      if (twa?.initData !== undefined) {
+        twa.ready();
+        twa.expand();
+      }
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
